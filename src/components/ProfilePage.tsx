@@ -541,7 +541,11 @@ const ProfilePage: React.FC = () => {
             allMedia.push(...postFiles);
           });
 
-          setMedia(allMedia);
+          // Filter out any invalid media files
+          const validMedia = allMedia.filter(file => !!file && !!file.path);
+          console.log(`Found ${validMedia.length} valid media files out of ${allMedia.length} total`);
+
+          setMedia(validMedia);
         } else if (postsResponse.error) {
           console.error('Error fetching creator posts:', postsResponse.error);
         }
@@ -806,7 +810,7 @@ const ProfilePage: React.FC = () => {
     const addedPaths = new Set<string>();
 
     // Add main file if exists
-    if (post.file) {
+    if (post.file && post.file.path) {
       files.push({
         ...post.file,
         id: `${post.id}-main`,
@@ -820,8 +824,8 @@ const ProfilePage: React.FC = () => {
     // Add attachments if exist
     if (post.attachments && post.attachments.length > 0) {
       post.attachments.forEach((attachment, index) => {
-        // Skip if we already have this file
-        if (addedPaths.has(attachment.path)) return;
+        // Skip if we already have this file or if path is missing
+        if (!attachment.path || addedPaths.has(attachment.path)) return;
 
         files.push({
           ...attachment,
@@ -837,6 +841,9 @@ const ProfilePage: React.FC = () => {
     // Check for _attachments (for videos)
     if (post._attachments && post._attachments.length > 0) {
       post._attachments.forEach((attachment: any, index: number) => {
+        // Skip if path is missing
+        if (!attachment.path) return;
+
         // Check if this attachment already exists in files
         if (addedPaths.has(attachment.path)) {
           // Update existing file with server info if needed
@@ -863,6 +870,9 @@ const ProfilePage: React.FC = () => {
     // Add preview files if they exist
     if (post._previews && post._previews.length > 0) {
       post._previews.forEach((preview, index) => {
+        // Skip if path is missing
+        if (!preview.path) return;
+
         // Check if this preview already exists in files
         if (addedPaths.has(preview.path)) {
           // Update existing file with server info if needed
@@ -886,7 +896,8 @@ const ProfilePage: React.FC = () => {
       });
     }
 
-    return files;
+    // Return only files with valid paths
+    return files.filter(file => !!file.path);
   };
 
   // Navigate to full post view

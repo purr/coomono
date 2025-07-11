@@ -278,8 +278,8 @@ const PostPage: React.FC = () => {
         // Add videos first (highest priority)
         if (postData.videos && postData.videos.length > 0) {
           postData.videos.forEach((video, index) => {
-            // Skip if we already have this file
-            if (addedPaths.has(video.path)) return;
+            // Skip if we already have this file or if path is missing
+            if (!video.path || addedPaths.has(video.path)) return;
 
             const mediaFile: MediaFile = {
               id: `video-${index}`,
@@ -295,7 +295,7 @@ const PostPage: React.FC = () => {
         }
 
         // Add main file if it exists
-        if (postData.post.file) {
+        if (postData.post.file && postData.post.file.path) {
           // Skip if we already have this file
           if (!addedPaths.has(postData.post.file.path)) {
             const mainFile: MediaFile = {
@@ -313,8 +313,8 @@ const PostPage: React.FC = () => {
         // Add attachments with server information
         if (postData.attachments && postData.attachments.length > 0) {
           postData.attachments.forEach((attachment, index) => {
-            // Skip if we already have this file
-            if (addedPaths.has(attachment.path)) return;
+            // Skip if we already have this file or if path is missing
+            if (!attachment.path || addedPaths.has(attachment.path)) return;
 
             const mediaFile: MediaFile = {
               id: `attachment-${index}`,
@@ -332,8 +332,8 @@ const PostPage: React.FC = () => {
         // Add previews with server information
         if (postData.previews && postData.previews.length > 0) {
           postData.previews.forEach((preview, index) => {
-            // Skip if we already have this file
-            if (addedPaths.has(preview.path)) return;
+            // Skip if we already have this file or if path is missing
+            if (!preview.path || addedPaths.has(preview.path)) return;
 
             const mediaFile: MediaFile = {
               id: `preview-${index}`,
@@ -348,8 +348,11 @@ const PostPage: React.FC = () => {
           });
         }
 
-        console.log(`Found ${allMedia.length} unique media files:`, allMedia);
-        setMediaFiles(allMedia);
+        // Filter out any media files without a valid path
+        const validMedia = allMedia.filter(file => !!file.path);
+
+        console.log(`Found ${validMedia.length} valid media files out of ${allMedia.length} total:`, validMedia);
+        setMediaFiles(validMedia);
       }
     } catch (error) {
       console.error('Error fetching post:', error);
@@ -512,11 +515,13 @@ const PostPage: React.FC = () => {
 
         {post?.content && <PostContent dangerouslySetInnerHTML={{ __html: post.content }} />}
 
-        {mediaFiles.length > 0 && (
+        {mediaFiles.length > 0 && mediaFiles.some(file => !!file.path) && (
           <MediaSection>
-            <MediaTitle>Media ({mediaFiles.length})</MediaTitle>
+            <MediaTitle>Media ({mediaFiles.filter(file => !!file.path).length})</MediaTitle>
             <MediaGrid>
-              {mediaFiles.map((file, index) => (
+              {mediaFiles
+                .filter(file => !!file.path)
+                .map((file, index) => (
                 <MediaCard
                   key={file.id}
                   onClick={() => handleMediaClick(file, index)}
