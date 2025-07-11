@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import styled from 'styled-components';
 import type { Creator } from '../types/api';
 import { ApiService } from '../services/api';
@@ -7,7 +8,7 @@ interface CreatorCardProps {
   creator: Creator;
 }
 
-const Card = styled.div`
+const Card = styled(Link)`
   position: relative;
   width: 100%;
   height: 80px;
@@ -17,9 +18,17 @@ const Card = styled.div`
   transition: transform 0.3s ease;
   cursor: pointer;
   aspect-ratio: 4.5 / 1; /* Approximately 720:160 */
+  display: block;
+  text-decoration: none;
 
   &:hover {
     transform: translateY(-4px);
+    text-decoration: none;
+  }
+
+  &:focus {
+    outline: none;
+    text-decoration: none;
   }
 `;
 
@@ -129,7 +138,7 @@ export const CreatorCard: React.FC<CreatorCardProps> = ({ creator }) => {
   const formattedFavorites = creator.favorited.toLocaleString();
 
   return (
-    <Card>
+    <Card to={`/profile/${creator.service}/${creator.id}`}>
       <BannerContainer>
         <Banner imageUrl={bannerUrl} />
       </BannerContainer>

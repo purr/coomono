@@ -1,12 +1,15 @@
-import { useEffect, useState, useContext } from "react";
-import styled from "styled-components";
-import { ApiService } from "./services/api";
-import { CreatorsModel } from "./models/creators";
-import { ThemeProvider, ThemeContext } from "./theme/ThemeContext";
-import { GlobalStyles } from "./theme/GlobalStyles";
-import { ThemeToggle } from "./components/ThemeToggle";
-import { CreatorList } from "./components/CreatorList";
-import type { Creator } from "./types/api";
+import { useEffect, useState } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import styled from 'styled-components';
+import { ApiService } from './services/api';
+import { CreatorsModel } from './models/creators';
+import { ThemeProvider } from './theme/ThemeContext';
+import { GlobalStyles } from './theme/GlobalStyles';
+import { ThemeToggle } from './components/ThemeToggle';
+import { CreatorList } from './components/CreatorList';
+import ProfilePage from './components/ProfilePage';
+import PostPage from './components/PostPage';
+import type { Creator } from './types/api';
 
 const AppContainer = styled.div`
   min-height: 100vh;
@@ -34,11 +37,23 @@ const Main = styled.main`
   padding-bottom: 3rem;
 `;
 
-const AppContent = () => {
+const ErrorContainer = styled.div`
+  padding: 16px;
+  border-radius: 8px;
+  text-align: center;
+  max-width: 600px;
+  margin: 0 auto;
+  background: rgba(235, 111, 146, 0.1);
+`;
+
+const ErrorText = styled.p`
+  color: ${({ theme }) => theme.love};
+`;
+
+const HomePage = () => {
   // Initialize API service and creators model
   const apiService = new ApiService();
   const creatorsModel = new CreatorsModel();
-  const { theme } = useContext(ThemeContext);
 
   // State variables
   const [loading, setLoading] = useState<boolean>(true);
@@ -62,11 +77,11 @@ const AppContent = () => {
 
           // Log available data for debugging and future feature development
           if (creatorData.length > 0) {
-            console.log("Sample creator data structure:", creatorData[0]);
+            console.log('Sample creator data structure:', creatorData[0]);
           }
         }
       } catch (err) {
-        setError("Failed to fetch creators");
+        setError('Failed to fetch creators');
         console.error(err);
       } finally {
         setLoading(false);
@@ -84,19 +99,9 @@ const AppContent = () => {
       </Header>
       <Main>
         {error ? (
-          <div
-            style={{
-              padding: "16px",
-              borderRadius: "8px",
-              textAlign: "center",
-              maxWidth: "600px",
-              margin: "0 auto",
-              background: "rgba(235, 111, 146, 0.1)",
-              color: theme.love,
-            }}
-          >
-            Error: {error}
-          </div>
+          <ErrorContainer>
+            <ErrorText>Error: {error}</ErrorText>
+          </ErrorContainer>
         ) : (
           <CreatorList creators={creators} isLoading={loading} />
         )}
@@ -105,12 +110,23 @@ const AppContent = () => {
   );
 };
 
+// Main App component with routing
 function App() {
+  // Get the base path for the app (useful for GitHub Pages deployment)
+  const basePath = import.meta.env.BASE_URL || '/';
+
   return (
     <ThemeProvider>
       <GlobalStyles />
       <ThemeToggle />
-      <AppContent />
+      <BrowserRouter basename={basePath}>
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/profile/:service/:id" element={<ProfilePage />} />
+          <Route path="/post/:service/:id/:postId" element={<PostPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
     </ThemeProvider>
   );
 }

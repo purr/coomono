@@ -107,8 +107,19 @@ export class CreatorsModel {
             const valueA = a[sortBy];
             const valueB = b[sortBy];
 
-            if (valueA < valueB) return ascending ? -1 : 1;
-            if (valueA > valueB) return ascending ? 1 : -1;
+            // Handle string values
+            if (typeof valueA === 'string' && typeof valueB === 'string') {
+                return ascending
+                    ? valueA.localeCompare(valueB)
+                    : valueB.localeCompare(valueA);
+            }
+
+            // Handle numeric values
+            const numA = valueA as number;
+            const numB = valueB as number;
+
+            if (numA < numB) return ascending ? -1 : 1;
+            if (numA > numB) return ascending ? 1 : -1;
             return 0;
         });
     }

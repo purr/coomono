@@ -92,22 +92,6 @@ const PageButton = styled.button<{ active?: boolean }>`
   }
 `;
 
-// SVG icons for sort direction
-const SortIcon = {
-  asc: (
-    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-      <path d="M8 3.5a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5z"/>
-      <path d="M7.646 2.854a.5.5 0 0 1 .708 0l2 2a.5.5 0 0 1-.708.708L8 3.207 6.354 4.854a.5.5 0 1 1-.708-.708l2-2z"/>
-    </svg>
-  ),
-  desc: (
-    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-      <path d="M8 12.5a.5.5 0 0 1-.5-.5V3a.5.5 0 0 1 1 0v9a.5.5 0 0 1-.5.5z"/>
-      <path d="M8.354 13.146a.5.5 0 0 1-.708 0l-2-2a.5.5 0 0 1 .708-.708L8 12.793l1.646-1.647a.5.5 0 0 1 .708.708l-2 2z"/>
-    </svg>
-  )
-};
-
 export const CreatorList: React.FC<CreatorListProps> = ({ creators, isLoading }) => {
   const [filteredCreators, setFilteredCreators] = useState<Creator[]>([]);
   const [selectedService, setSelectedService] = useState<string>('all');

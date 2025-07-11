@@ -22,9 +22,9 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/kemono-api/, ''),
       },
-      // Proxy for image server
+      // Proxy for image server (icons, banners, etc.)
       '/img-proxy': {
-        target: 'https://img.coomer.su',
+        target: 'https://n1.coomer.su',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/img-proxy/, ''),
       }

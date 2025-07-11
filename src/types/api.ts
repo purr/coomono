@@ -10,32 +10,74 @@ export interface Creator {
     indexed: number;
     updated: number;
     favorited: number;
+    links?: Link[];
+}
+
+/**
+ * Social media link
+ */
+export interface Link {
+    platform: string;
+    url: string;
 }
 
 /**
  * Profile information of a creator
  */
 export interface CreatorProfile {
-    // Properties will be determined based on API response
     id: string;
     name: string;
     service: string;
-    // Other properties to be determined
+    favorited: number;
+    updated: number;
+    indexed?: number;
+    links?: Link[];
+    description?: string;
 }
 
 /**
- * Post object from a creator
+ * Post object from a creator (legacy API)
  */
 export interface Post {
-    // Properties will be determined based on API response
     id: string;
     user: string;
     service: string;
     title: string;
-    content: string;
-    embed: object;
-    shared_file: boolean;
-    // Other properties to be determined
+    content?: string;
+    published: string; // ISO date string
+    file?: {
+        name: string;
+        path: string;
+    };
+    attachments?: {
+        name: string;
+        path: string;
+    }[];
+    // Additional fields from legacy API
+    substring?: string;
+    added?: string;
+    embed?: object;
+    shared_file?: boolean;
+    edited?: string | null;
+    poll?: any | null;
+    captions?: any | null;
+    tags?: any | null;
+}
+
+/**
+ * File object for attachments
+ */
+export interface File {
+    id?: string; // Generated client-side
+    name: string;
+    path: string;
+    hash?: string;
+    size?: number;
+    added?: number;
+    type?: string;
+    width?: number;
+    height?: number;
+    duration?: number; // For videos
 }
 
 /**
@@ -52,7 +94,10 @@ export const ApiEndpoint = {
     // Profile of a specific creator
     CREATOR_PROFILE: "/{platform}/user/{name}/profile",
 
-    // Posts of a specific creator
+    // Posts of a specific creator (new legacy endpoint)
+    CREATOR_POSTS_LEGACY: "/{platform}/user/{name}/posts-legacy",
+
+    // Posts of a specific creator (old endpoint)
     CREATOR_POSTS: "/{platform}/user/{name}/posts",
 } as const;
 
