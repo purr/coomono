@@ -4,25 +4,24 @@ import { ThemeContext } from '../theme/ThemeContext';
 
 const ToggleButton = styled.button`
   position: fixed;
-  top: 1rem;
-  right: 1rem;
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.5rem;
-  border-radius: 50%;
+  bottom: 20px;
+  right: 20px;
   width: 40px;
   height: 40px;
+  border-radius: 50%;
   background: ${({ theme }) => theme.overlay};
   color: ${({ theme }) => theme.text};
   border: 1px solid ${({ theme }) => theme.highlightMed};
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
-  transition: all 0.3s ease;
+  z-index: 100;
+  transition: all 0.2s ease;
 
   &:hover {
+    transform: scale(1.1);
     background: ${({ theme }) => theme.highlightMed};
-    transform: scale(1.05);
   }
 `;
 
@@ -30,7 +29,7 @@ export const ThemeToggle: React.FC = () => {
   const { isDark, toggleTheme } = useContext(ThemeContext);
 
   return (
-    <ToggleButton onClick={toggleTheme} title={`Switch to ${isDark ? 'light' : 'dark'} mode`}>
+    <ToggleButton onClick={toggleTheme} aria-label="Toggle theme">
       {isDark ? '☀️' : '🌙'}
     </ToggleButton>
   );

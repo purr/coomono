@@ -1,14 +1,118 @@
-import { ApiEndpoint, Service } from '../types/api';
-import type { ApiResponse, Creator, CreatorProfile, Post, File } from '../types/api';
+import { ApiPath, DEFAULT_API_INSTANCES } from "../types/common";
+import type { ApiResponse, ApiInstance } from '../types/common';
+import type { Creator } from '../types/creators';
+import type { CreatorProfile } from '../types/profile';
+import type { Post } from '../types/posts';
 
 /**
- * API service for interacting with coomer.su and kemono.su
+ * API service for interacting with kemono-style APIs
  */
 export class ApiService {
-    private coomerBaseUrl: string = '/coomer-api'; // Using proxy path instead of direct URL
-    private kemonoBaseUrl: string = '/kemono-api'; // Using proxy path instead of direct URL
-    private imageProxyUrl: string = '/img-proxy'; // Using proxy path for images
-    private dataProxyUrl: string = '/img-proxy/data'; // Using proxy path for data files
+    private static instance: ApiService;
+    private currentApiInstance!: ApiInstance;
+    private availableInstances: ApiInstance[] = [];
+
+    constructor(apiInstance?: ApiInstance) {
+        // Ensure singleton pattern - always return the existing instance
+        if (ApiService.instance) {
+            return ApiService.instance;
+        }
+
+        // Initialize available instances
+        this.availableInstances = DEFAULT_API_INSTANCES.map(instance => ({
+            ...instance,
+            // Make sure URL doesn't have protocol
+            url: this.stripProtocol(instance.url)
+        }));
+
+        // Default to the first default instance if none provided
+        this.currentApiInstance = apiInstance ||
+            this.availableInstances.find(i => i.isDefault) ||
+            this.availableInstances[0];
+
+        // Set the static instance to this instance
+        ApiService.instance = this;
+
+        console.log("API Service initialized with instance:", this.currentApiInstance);
+    }
+
+    /**
+     * Strip protocol from URL if present
+     */
+    private stripProtocol(url: string): string {
+        return url.replace(/^https?:\/\//, '');
+    }
+
+    /**
+     * Get the current API instance
+     */
+    getCurrentApiInstance(): ApiInstance {
+        return this.currentApiInstance;
+    }
+
+    /**
+     * Set the current API instance
+     */
+    setCurrentApiInstance(instance: ApiInstance): void {
+        // Make sure URL doesn't have protocol
+        this.currentApiInstance = {
+            ...instance,
+            url: this.stripProtocol(instance.url)
+        };
+
+        console.log(`API instance set to: ${this.currentApiInstance.name} (${this.currentApiInstance.url})`);
+
+        // Clear any caches that might be using the old domain
+        console.log('Domain updated - clearing any cached data');
+    }
+
+    /**
+     * Get all available API instances
+     */
+    getAvailableInstances(): ApiInstance[] {
+        return this.availableInstances;
+    }
+
+    /**
+     * Add a custom API instance
+     */
+    addApiInstance(instance: ApiInstance): void {
+        // Strip protocol if present
+        const normalizedInstance = {
+            ...instance,
+            url: this.stripProtocol(instance.url)
+        };
+
+        // Check if already exists
+        const exists = this.availableInstances.some(i => i.url === normalizedInstance.url);
+        if (!exists) {
+            this.availableInstances.push(normalizedInstance);
+        }
+    }
+
+    /**
+     * Gets the domain for the current API instance
+     */
+    private getDomain(): string {
+        return this.currentApiInstance.url;
+    }
+
+    /**
+     * Gets the full URL for the API (using proxy)
+     */
+    private getApiBaseUrl(): string {
+        const domain = this.getDomain();
+        return `/api/${domain}`;
+    }
+
+    /**
+     * Gets the base URL for images
+     */
+    private getImageBaseUrl(): string {
+        const domain = this.getDomain();
+        console.log(`Using domain for images: ${domain} (from instance ${this.currentApiInstance.name})`);
+        return `https://img.${domain}`;
+    }
 
     /**
      * Fetches all creators from the API
@@ -16,12 +120,18 @@ export class ApiService {
      */
     async getAllCreators(): Promise<ApiResponse<Creator[]>> {
         try {
-            // Use coomer.su endpoint, which should contain all creators
-            const response = await fetch(`${this.coomerBaseUrl}${ApiEndpoint.CREATORS}`);
+            const baseUrl = this.getApiBaseUrl();
+            const url = `${baseUrl}${ApiPath.CREATORS}`;
+
+            console.log(`Fetching creators from: ${url}`);
+
+            const response = await fetch(url);
+
             if (!response.ok) {
                 throw new Error(`HTTP error! Status: ${response.status}`);
             }
-            const data: Creator[] = await response.json();
+
+            const data = await response.json();
             return { data };
         } catch (error) {
             console.error('Error fetching creators:', error);
@@ -81,9 +191,8 @@ export class ApiService {
      */
     async getCreatorProfile(platform: string, name: string): Promise<ApiResponse<CreatorProfile>> {
         try {
-            // Determine whether to use coomer.su or kemono.su based on the platform
-            const baseUrl = this.getBaseUrlForPlatform(platform);
-            const url = `${baseUrl}${ApiEndpoint.CREATOR_PROFILE
+            const baseUrl = this.getApiBaseUrl();
+            const url = `${baseUrl}${ApiPath.CREATOR_PROFILE
                 .replace('{platform}', platform)
                 .replace('{name}', name)}`;
 
@@ -109,9 +218,8 @@ export class ApiService {
      */
     async getCreatorPosts(platform: string, name: string, offset: number = 0, limit: number = 50): Promise<ApiResponse<Post[]>> {
         try {
-            // Determine whether to use coomer.su or kemono.su based on the platform
-            const baseUrl = this.getBaseUrlForPlatform(platform);
-            const url = `${baseUrl}${ApiEndpoint.CREATOR_POSTS_LEGACY
+            const baseUrl = this.getApiBaseUrl();
+            const url = `${baseUrl}${ApiPath.CREATOR_POSTS_LEGACY
                 .replace('{platform}', platform)
                 .replace('{name}', name)}?o=${offset}&l=${limit}`;
 
@@ -141,7 +249,9 @@ export class ApiService {
      */
     getProfilePictureUrl(platform: string, name: string): string {
         if (!platform || !name) return '';
-        return `${this.imageProxyUrl}/icons/${platform}/${name}`;
+        const baseUrl = this.getImageBaseUrl();
+        console.log(`Creating profile picture URL with base: ${baseUrl}`);
+        return `${baseUrl}/icons/${platform}/${name}`;
     }
 
     /**
@@ -152,51 +262,65 @@ export class ApiService {
      */
     getBannerUrl(platform: string, name: string): string {
         if (!platform || !name) return '';
-        return `${this.imageProxyUrl}/banners/${platform}/${name}`;
+        const baseUrl = this.getImageBaseUrl();
+        return `${baseUrl}/banners/${platform}/${name}`;
     }
 
     /**
      * Gets the URL for a file
      * @param path The path to the file
+     * @param server Optional server URL for videos
+     * @param type Optional file type (e.g., 'thumbnail')
      * @returns URL to the file
      */
-    getFileUrl(path: string): string {
+    getFileUrl(path: string, server?: string, type: string = 'thumbnail'): string {
         if (!path) return '';
         // Make sure path starts with a slash
         const formattedPath = path.startsWith('/') ? path : `/${path}`;
-        return `${this.dataProxyUrl}${formattedPath}`;
+
+        // Check if it's a video (mp4, etc.)
+        const isVideo = formattedPath.match(/\.(mp4|webm|mov|avi|wmv)$/i) !== null;
+
+        if (isVideo && server) {
+            // For videos, ALWAYS use the server from the response and just "/data" in the path
+            return `${server}/data${formattedPath}`;
+        } else if (!isVideo) {
+            // For images, use the direct image URL with the type
+            const baseUrl = this.getImageBaseUrl();
+            return `${baseUrl}/${type}/data${formattedPath}`;
+        }
+
+        // If we get here, it's a video without a server - this shouldn't happen
+        // but we'll log a warning and use a placeholder
+        console.warn('Video without server URL:', path);
+        return `https://example.com/missing-server-url${formattedPath}`;
     }
 
     /**
      * Gets the thumbnail URL for a file
      * @param path The path to the file
+     * @param server Optional server URL for videos
      * @returns URL to the thumbnail
      */
-    getThumbnailUrl(path: string): string {
+    getThumbnailUrl(path: string, server?: string): string {
         if (!path) return '';
         // Make sure path starts with a slash
         const formattedPath = path.startsWith('/') ? path : `/${path}`;
 
-        // For videos, we might want to append a thumbnail parameter
-        if (formattedPath.match(/\.(mp4|webm|mov|avi|wmv)$/i)) {
-            return `${this.dataProxyUrl}${formattedPath}?thumbnail=1`;
-        }
-        return this.getFileUrl(formattedPath);
-    }
+        // Check if it's a video
+        const isVideo = formattedPath.match(/\.(mp4|webm|mov|avi|wmv)$/i) !== null;
 
-    /**
-     * Determines the appropriate base URL based on the platform
-     * @param platform The platform/service
-     * @returns The base URL for the API
-     */
-    private getBaseUrlForPlatform(platform: string): string {
-        // OnlyFans and Fansly are on coomer.su, others on kemono.su
-        switch (platform) {
-            case Service.ONLYFANS:
-            case Service.FANSLY:
-                return this.coomerBaseUrl;
-            default:
-                return this.kemonoBaseUrl;
+        if (isVideo && server) {
+            // For videos, just return the server URL with data path - no thumbnail parameter
+            // Videos don't support thumbnails directly
+            return `${server}/data${formattedPath}`;
+        } else if (isVideo) {
+            // If we get here, it's a video without a server - this shouldn't happen
+            console.warn('Video without server URL for thumbnail:', path);
+            return `https://example.com/missing-server-url${formattedPath}`;
         }
+
+        // For images, use the standard file URL with thumbnail type
+        return this.getFileUrl(formattedPath, server, 'thumbnail');
     }
 }

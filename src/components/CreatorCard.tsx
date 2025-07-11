@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import styled from 'styled-components';
-import type { Creator } from '../types/api';
+import type { Creator } from '../types/creators';
 import { ApiService } from '../services/api';
 
 interface CreatorCardProps {
@@ -134,11 +134,11 @@ export const CreatorCard: React.FC<CreatorCardProps> = ({ creator }) => {
   const apiService = new ApiService();
   const bannerUrl = apiService.getBannerUrl(creator.service, creator.id);
   const profileUrl = apiService.getProfilePictureUrl(creator.service, creator.id);
-
+  const currentInstance = apiService.getCurrentApiInstance();
   const formattedFavorites = creator.favorited.toLocaleString();
 
   return (
-    <Card to={`/profile/${creator.service}/${creator.id}`}>
+    <Card to={`/${currentInstance.url}/${creator.service}/user/${creator.id}`}>
       <BannerContainer>
         <Banner imageUrl={bannerUrl} />
       </BannerContainer>

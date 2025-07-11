@@ -2,13 +2,21 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { ApiService } from '../services/api';
-import type { Creator, Post as ApiPost, File } from '../types/api';
+import type { CreatorProfile } from '../types/profile';
+import type { Post as ApiPost } from '../types/posts';
+import type { File as MediaTypeFile } from '../types/common';
 
 // Make sure the Post type has all fields as optional
 interface Post extends Omit<ApiPost, 'published' | 'added' | 'edited'> {
   published?: string;
   added?: string;
   edited?: string | null;
+}
+
+// Define a MediaFile type to replace the File interface
+interface MediaFile extends MediaTypeFile {
+  id: string;
+  server?: string;
 }
 
 // Styled components
@@ -461,9 +469,9 @@ type MediaSortField = 'added' | 'size' | 'duration';
 const ProfilePage: React.FC = () => {
   const { service, id } = useParams<{ service: string; id: string }>();
   const navigate = useNavigate();
-  const [creator, setCreator] = useState<Creator | null>(null);
+  const [creator, setCreator] = useState<CreatorProfile | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
-  const [media, setMedia] = useState<File[]>([]);
+  const [media, setMedia] = useState<MediaFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'posts' | 'media'>('posts');
   const [expandedPosts, setExpandedPosts] = useState<ExpandedPostState>({});
@@ -481,7 +489,7 @@ const ProfilePage: React.FC = () => {
   const [currentMediaPage, setCurrentMediaPage] = useState(1);
   const mediaPerPage = 10;
 
-  const [selectedMedia, setSelectedMedia] = useState<File | null>(null);
+  const [selectedMedia, setSelectedMedia] = useState<MediaFile | null>(null);
   const [currentMediaIndex, setCurrentMediaIndex] = useState<number>(-1);
 
   const apiService = new ApiService();
@@ -504,7 +512,7 @@ const ProfilePage: React.FC = () => {
           setPosts(postsResponse.data as Post[]);
 
           // Extract all media files from posts
-          const allMedia: File[] = [];
+          const allMedia: MediaFile[] = [];
           postsResponse.data.forEach(post => {
             // Get timestamp from post published date or use current time
             const currentTime = Math.floor(Date.now() / 1000);
@@ -523,7 +531,7 @@ const ProfilePage: React.FC = () => {
 
             // Add main file if exists
             if (post.file) {
-              const fileWithId: File = {
+              const fileWithId: MediaFile = {
                 ...post.file,
                 id: `${post.id}-main`,
                 added: timestamp
@@ -534,7 +542,7 @@ const ProfilePage: React.FC = () => {
             // Add attachments if exist
             if (post.attachments && post.attachments.length > 0) {
               post.attachments.forEach((attachment, index) => {
-                const attachmentWithId: File = {
+                const attachmentWithId: MediaFile = {
                   ...attachment,
                   id: `${post.id}-attachment-${index}`,
                   added: timestamp
@@ -563,7 +571,7 @@ const ProfilePage: React.FC = () => {
     }));
   };
 
-  const handleMediaClick = (file: File, index: number) => {
+  const handleMediaClick = (file: MediaFile, index: number) => {
     setSelectedMedia(file);
     setCurrentMediaIndex(index);
   };
@@ -733,26 +741,26 @@ const ProfilePage: React.FC = () => {
   }
   const uniqueMediaPageNumbers = mediaPageNumbers.filter((num, index, arr) => arr.indexOf(num) === index);
 
-  const isVideo = (file: File) => {
+  const isVideo = (file: MediaFile) => {
     return file.name.match(/\.(mp4|webm|mov|avi|wmv)$/i) !== null;
   };
 
-  const getMediaUrl = (file: File) => {
-    return apiService.getFileUrl(file.path);
+  const getMediaUrl = (file: MediaFile) => {
+    return apiService.getFileUrl(file.path, file.server, file.type);
   };
 
-  const getThumbnailUrl = (file: File) => {
+  const getThumbnailUrl = (file: MediaFile) => {
     if (isVideo(file) && file.path) {
       // For videos, we might have a thumbnail
-      return apiService.getThumbnailUrl(file.path);
+      return apiService.getThumbnailUrl(file.path, file.server);
     }
     // For images, use the image itself
     return getMediaUrl(file);
   };
 
   // Get all media files for a post (main file + attachments)
-  const getPostMediaFiles = (post: Post): File[] => {
-    const files: File[] = [];
+  const getPostMediaFiles = (post: Post): MediaFile[] => {
+    const files: MediaFile[] = [];
 
     // Get timestamp for file
     const currentTime = Math.floor(Date.now() / 1000);
@@ -775,6 +783,8 @@ const ProfilePage: React.FC = () => {
         id: `${post.id}-main`,
         name: post.file.name,
         path: post.file.path,
+        server: post.file.server,
+        type: post.file.type || 'thumbnail',
         added: timestamp
       });
     }
@@ -786,9 +796,37 @@ const ProfilePage: React.FC = () => {
           id: `${post.id}-attachment-${index}`,
           name: attachment.name,
           path: attachment.path,
+          server: attachment.server,
+          type: attachment.type || 'thumbnail',
           added: timestamp
         });
       });
+    }
+
+    // Check for result_attachments (for videos)
+    if (post.result_attachments && post.result_attachments.length > 0) {
+      // Find the index of the current post in the results array
+      const postIndex = posts.findIndex(p => p.id === post.id);
+      if (postIndex >= 0 && post.result_attachments[postIndex]) {
+        post.result_attachments[postIndex].forEach((attachment, index) => {
+          // Check if this attachment already exists in files
+          const existingIndex = files.findIndex(f => f.path === attachment.path);
+          if (existingIndex >= 0) {
+            // Update existing file with server info
+            files[existingIndex].server = attachment.server;
+          } else {
+            // Add as new file
+            files.push({
+              id: `${post.id}-result-attachment-${index}`,
+              name: attachment.name,
+              path: attachment.path,
+              server: attachment.server,
+              type: 'thumbnail',
+              added: timestamp
+            });
+          }
+        });
+      }
     }
 
     return files;
@@ -796,7 +834,8 @@ const ProfilePage: React.FC = () => {
 
   // Navigate to full post view
   const navigateToPost = (post: Post) => {
-    navigate(`/post/${service}/${id}/${post.id}`);
+    const currentInstance = apiService.getCurrentApiInstance();
+    navigate(`/${currentInstance.url}/${service}/user/${id}/post/${post.id}`);
   };
 
   if (loading) {
@@ -817,7 +856,10 @@ const ProfilePage: React.FC = () => {
 
   return (
     <ProfileContainer>
-      <BackButton onClick={() => navigate(-1)}>
+      <BackButton onClick={() => {
+        const currentInstance = apiService.getCurrentApiInstance();
+        navigate(`/${currentInstance.url}`);
+      }}>
         ← Back to Creators
       </BackButton>
 

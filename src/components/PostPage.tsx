@@ -2,7 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { ApiService } from '../services/api';
-import type { Post, File } from '../types/api';
+import type { Post } from '../types/posts';
+import type { File as MediaTypeFile } from '../types/common';
+
+// Define a MediaFile type to replace the File interface
+interface MediaFile extends MediaTypeFile {
+  id: string;
+  server?: string;
+}
 
 // Styled components
 const PostPageContainer = styled.div`
@@ -218,72 +225,60 @@ const ImageViewer = styled.img`
 const PostPage: React.FC = () => {
   const { service, id, postId } = useParams<{ service: string; id: string; postId: string }>();
   const navigate = useNavigate();
-  const [post, setPost] = useState<Post | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [mediaFiles, setMediaFiles] = useState<File[]>([]);
-  const [selectedMedia, setSelectedMedia] = useState<File | null>(null);
-  const [currentMediaIndex, setCurrentMediaIndex] = useState<number>(-1);
-
   const apiService = new ApiService();
 
+  const [post, setPost] = useState<Post | null>(null);
+  const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedMedia, setSelectedMedia] = useState<MediaFile | null>(null);
+  const [currentMediaIndex, setCurrentMediaIndex] = useState<number>(-1);
+
   useEffect(() => {
-    const fetchPostData = async () => {
-      if (!service || !id || !postId) return;
-
-      setLoading(true);
-      try {
-        // Fetch creator posts
-        const postsResponse = await apiService.getCreatorPosts(service, id);
-        if (postsResponse.data) {
-          // Find the specific post
-          const foundPost = postsResponse.data.find(p => p.id === postId);
-          if (foundPost) {
-            setPost(foundPost);
-
-            // Get timestamp from post published date or use current time
-            const timestamp = typeof foundPost.published === 'string' && foundPost.published
-              ? new Date(foundPost.published).getTime() / 1000
-              : Date.now() / 1000;
-
-            // Collect all media files from the post
-            const files: File[] = [];
-
-            // Add main file if exists
-            if (foundPost.file) {
-              files.push({
-                id: `${foundPost.id}-main`,
-                name: foundPost.file.name,
-                path: foundPost.file.path,
-                added: timestamp
-              });
-            }
-
-            // Add attachments if exist
-            if (foundPost.attachments && foundPost.attachments.length > 0) {
-              foundPost.attachments.forEach((attachment, index) => {
-                files.push({
-                  id: `${foundPost.id}-attachment-${index}`,
-                  name: attachment.name,
-                  path: attachment.path,
-                  added: timestamp
-                });
-              });
-            }
-
-            setMediaFiles(files);
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching post data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchPostData();
   }, [service, id, postId]);
 
-  const handleMediaClick = (file: File, index: number) => {
+  const fetchPostData = async () => {
+    if (!service || !id || !postId) return;
+
+    setLoading(true);
+    try {
+      // Fetch creator posts
+      const postsResponse = await apiService.getCreatorPosts(service, id);
+      if (postsResponse.data) {
+        // Find the specific post
+        const foundPost = postsResponse.data.find(p => p.id === postId);
+        if (foundPost) {
+          setPost(foundPost);
+
+          // Get timestamp from post published date or use current time
+          const timestamp = typeof foundPost.published === 'string' && foundPost.published
+            ? new Date(foundPost.published).getTime() / 1000
+            : Date.now() / 1000;
+
+          // Collect all media files from the post
+          const allMedia: MediaFile[] = [
+            ...(foundPost.file ? [{ id: 'post-file', name: foundPost.file.name, path: foundPost.file.path, server: foundPost.service, type: 'file' }] : []),
+            ...(foundPost.attachments?.map((attachment, index) => ({
+              id: `attachment-${index}`,
+              name: attachment.name,
+              path: attachment.path,
+              server: foundPost.service,
+              type: 'attachment',
+              duration: (attachment as any).duration, // Assuming duration might exist on attachment
+            })) || []),
+          ].filter(Boolean) as MediaFile[];
+
+          setMediaFiles(allMedia);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching post:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleMediaClick = (file: MediaFile, index: number) => {
     setSelectedMedia(file);
     setCurrentMediaIndex(index);
   };
@@ -338,18 +333,18 @@ const PostPage: React.FC = () => {
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
   };
 
-  const isVideo = (file: File) => {
+  const isVideo = (file: MediaFile) => {
     return file.name.match(/\.(mp4|webm|mov|avi|wmv)$/i) !== null;
   };
 
-  const getMediaUrl = (file: File) => {
-    return apiService.getFileUrl(file.path);
+  const getMediaUrl = (file: MediaFile) => {
+    return apiService.getFileUrl(file.path, file.server, file.type);
   };
 
-  const getThumbnailUrl = (file: File) => {
+  const getThumbnailUrl = (file: MediaFile) => {
     if (isVideo(file) && file.path) {
       // For videos, we might have a thumbnail
-      return apiService.getThumbnailUrl(file.path);
+      return apiService.getThumbnailUrl(file.path, file.server);
     }
     // For images, use the image itself
     return getMediaUrl(file);
@@ -373,7 +368,10 @@ const PostPage: React.FC = () => {
 
   return (
     <PostPageContainer>
-      <BackButton onClick={() => navigate(`/profile/${service}/${id}`)}>
+      <BackButton onClick={() => {
+        const currentInstance = apiService.getCurrentApiInstance();
+        navigate(`/${currentInstance.url}/${service}/user/${id}`);
+      }}>
         ← Back to Creator Profile
       </BackButton>
 
