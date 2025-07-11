@@ -1,8 +1,9 @@
 import { ApiPath, DEFAULT_API_INSTANCES } from "../types/common";
 import type { ApiResponse, ApiInstance } from '../types/common';
-import type { Creator } from '../types/creators';
-import type { CreatorProfile } from '../types/profile';
-import type { Post } from '../types/posts';
+import type { Creator, CreatorsResponse } from '../types/creators';
+import type { CreatorProfile, ProfileResponse } from '../types/profile';
+import type { Post, PostResponse } from '../types/posts';
+import type { PostsLegacyResponse, LegacyPost } from '../types/posts-legacy';
 
 /**
  * API service for interacting with kemono-style APIs
@@ -11,6 +12,18 @@ export class ApiService {
     private static instance: ApiService;
     private currentApiInstance!: ApiInstance;
     private availableInstances: ApiInstance[] = [];
+
+    // Cache for creators list
+    private static creatorsCache: {
+        [domain: string]: {
+            data: Creator[] | null;
+            error: string | null;
+            timestamp: number;
+        }
+    } = {};
+
+    // Cache expiration time in milliseconds (1 hour)
+    private static CACHE_EXPIRATION = 60 * 60 * 1000;
 
     constructor(apiInstance?: ApiInstance) {
         // Ensure singleton pattern - always return the existing instance
@@ -55,15 +68,21 @@ export class ApiService {
      */
     setCurrentApiInstance(instance: ApiInstance): void {
         // Make sure URL doesn't have protocol
+        const newUrl = this.stripProtocol(instance.url);
+        const oldUrl = this.currentApiInstance.url;
+
         this.currentApiInstance = {
             ...instance,
-            url: this.stripProtocol(instance.url)
+            url: newUrl
         };
 
         console.log(`API instance set to: ${this.currentApiInstance.name} (${this.currentApiInstance.url})`);
 
-        // Clear any caches that might be using the old domain
-        console.log('Domain updated - clearing any cached data');
+        // Clear the cache if the domain changed
+        if (newUrl !== oldUrl) {
+            console.log('Domain changed - clearing cached data');
+            delete ApiService.creatorsCache[oldUrl];
+        }
     }
 
     /**
@@ -87,6 +106,21 @@ export class ApiService {
         const exists = this.availableInstances.some(i => i.url === normalizedInstance.url);
         if (!exists) {
             this.availableInstances.push(normalizedInstance);
+        }
+    }
+
+    /**
+     * Clear the creators cache for the current domain or all domains
+     * @param allDomains Whether to clear cache for all domains
+     */
+    clearCreatorsCache(allDomains: boolean = false): void {
+        if (allDomains) {
+            console.log('Clearing creators cache for all domains');
+            ApiService.creatorsCache = {};
+        } else {
+            const domain = this.getDomain();
+            console.log(`Clearing creators cache for domain: ${domain}`);
+            delete ApiService.creatorsCache[domain];
         }
     }
 
@@ -116,14 +150,29 @@ export class ApiService {
 
     /**
      * Fetches all creators from the API
-     * @returns Promise with an array of creators
+     * @returns Promise with array of creators
      */
     async getAllCreators(): Promise<ApiResponse<Creator[]>> {
+        const domain = this.getDomain();
+        const now = Date.now();
+
+        // Check if we have a valid cache entry
+        if (
+            ApiService.creatorsCache[domain] &&
+            ApiService.creatorsCache[domain].timestamp > now - ApiService.CACHE_EXPIRATION
+        ) {
+            console.log('Using cached creators data');
+            if (ApiService.creatorsCache[domain].data) {
+                return { data: ApiService.creatorsCache[domain].data };
+            } else if (ApiService.creatorsCache[domain].error) {
+                return { error: ApiService.creatorsCache[domain].error };
+            }
+        }
+
         try {
+            console.log('Fetching creators.txt from API');
             const baseUrl = this.getApiBaseUrl();
             const url = `${baseUrl}${ApiPath.CREATORS}`;
-
-            console.log(`Fetching creators from: ${url}`);
 
             const response = await fetch(url);
 
@@ -131,10 +180,26 @@ export class ApiService {
                 throw new Error(`HTTP error! Status: ${response.status}`);
             }
 
-            const data = await response.json();
+            const data: CreatorsResponse = await response.json();
+
+            // Cache the results
+            ApiService.creatorsCache[domain] = {
+                data,
+                error: null,
+                timestamp: now
+            };
+
             return { data };
         } catch (error) {
             console.error('Error fetching creators:', error);
+
+            // Cache the error
+            ApiService.creatorsCache[domain] = {
+                data: null,
+                error: error instanceof Error ? error.message : 'Unknown error occurred',
+                timestamp: now
+            };
+
             return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
         }
     }
@@ -196,15 +261,47 @@ export class ApiService {
                 .replace('{platform}', platform)
                 .replace('{name}', name)}`;
 
+            console.log(`Fetching creator profile from: ${url}`);
             const response = await fetch(url);
+
             if (!response.ok) {
                 throw new Error(`HTTP error! Status: ${response.status}`);
             }
-            const data: CreatorProfile = await response.json();
-            return { data };
+
+            const data: ProfileResponse = await response.json();
+            console.log('Raw profile data:', data);
+
+            // Validate the data and provide defaults for missing fields
+            const profile: CreatorProfile = {
+                id: data.id || name,
+                name: data.name || name,
+                service: data.service || platform,
+                favorited: typeof data.favorited === 'number' ? data.favorited : 0,
+                updated: typeof data.updated === 'number' ? data.updated : Math.floor(Date.now() / 1000),
+                indexed: typeof data.indexed === 'number' ? data.indexed : undefined,
+                links: Array.isArray(data.links) ? data.links : [],
+                description: data.description || ''
+            };
+
+            return { data: profile };
         } catch (error) {
             console.error(`Error fetching profile for ${platform}/${name}:`, error);
-            return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
+
+            // Return a default profile object in case of error
+            const defaultProfile: CreatorProfile = {
+                id: name,
+                name: name,
+                service: platform,
+                favorited: 0,
+                updated: Math.floor(Date.now() / 1000),
+                links: [],
+                description: ''
+            };
+
+            return {
+                data: defaultProfile,
+                error: error instanceof Error ? error.message : 'Unknown error occurred'
+            };
         }
     }
 
@@ -216,7 +313,7 @@ export class ApiService {
      * @param limit Optional limit for pagination
      * @returns Promise with creator's posts
      */
-    async getCreatorPosts(platform: string, name: string, offset: number = 0, limit: number = 50): Promise<ApiResponse<Post[]>> {
+    async getCreatorPosts(platform: string, name: string, offset: number = 0, limit: number = 50): Promise<ApiResponse<LegacyPost[]>> {
         try {
             const baseUrl = this.getApiBaseUrl();
             const url = `${baseUrl}${ApiPath.CREATOR_POSTS_LEGACY
@@ -229,14 +326,70 @@ export class ApiService {
             }
 
             // The legacy API returns data in a different format
-            const responseData = await response.json();
+            const responseData: PostsLegacyResponse = await response.json();
 
             // Extract posts from the results array
-            const posts: Post[] = responseData.results || [];
+            const posts: LegacyPost[] = responseData.results || [];
+
+            // Map the result_previews, result_attachments, and result_is_image to the posts if they exist
+            if (responseData.result_previews && responseData.result_previews.length > 0) {
+                posts.forEach((post, index) => {
+                    if (responseData.result_previews && responseData.result_previews[index]) {
+                        // Store previews in a temporary field for later use
+                        post._previews = responseData.result_previews[index];
+                    }
+                });
+            }
+
+            if (responseData.result_attachments && responseData.result_attachments.length > 0) {
+                posts.forEach((post, index) => {
+                    if (responseData.result_attachments && responseData.result_attachments[index]) {
+                        // Store attachments in a temporary field for later use
+                        post._attachments = responseData.result_attachments[index];
+                    }
+                });
+            }
+
+            if (responseData.result_is_image && responseData.result_is_image.length > 0) {
+                posts.forEach((post, index) => {
+                    if (responseData.result_is_image) {
+                        // Store is_image flag in a temporary field for later use
+                        post._is_image = responseData.result_is_image[index];
+                    }
+                });
+            }
 
             return { data: posts };
         } catch (error) {
             console.error(`Error fetching posts for ${platform}/${name}:`, error);
+            return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
+        }
+    }
+
+    /**
+     * Fetches a specific post by platform, creator name, and post ID
+     * @param platform The platform/service of the creator
+     * @param name The creator's name/id
+     * @param postId The post ID
+     * @returns Promise with complete post response
+     */
+    async getPost(platform: string, name: string, postId: string): Promise<ApiResponse<PostResponse>> {
+        try {
+            const baseUrl = this.getApiBaseUrl();
+            const url = `${baseUrl}${ApiPath.POST
+                .replace('{platform}', platform)
+                .replace('{name}', name)
+                .replace('{postId}', postId)}`;
+
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+
+            const data: PostResponse = await response.json();
+            return { data };
+        } catch (error) {
+            console.error(`Error fetching post ${platform}/${name}/${postId}:`, error);
             return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
         }
     }
@@ -281,19 +434,23 @@ export class ApiService {
         // Check if it's a video (mp4, etc.)
         const isVideo = formattedPath.match(/\.(mp4|webm|mov|avi|wmv)$/i) !== null;
 
-        if (isVideo && server) {
-            // For videos, ALWAYS use the server from the response and just "/data" in the path
-            return `${server}/data${formattedPath}`;
-        } else if (!isVideo) {
-            // For images, use the direct image URL with the type
+        if (isVideo) {
+            // For videos, use the server if available
+            if (server) {
+                return `${server}/data${formattedPath}`;
+            }
+            // If no server provided, use the current domain
+            const domain = this.getDomain();
+            return `https://${domain}/data${formattedPath}`;
+        } else {
+            // For images, use the direct image URL with the specified type (thumbnail, attachment, etc.)
             const baseUrl = this.getImageBaseUrl();
-            return `${baseUrl}/${type}/data${formattedPath}`;
-        }
 
-        // If we get here, it's a video without a server - this shouldn't happen
-        // but we'll log a warning and use a placeholder
-        console.warn('Video without server URL:', path);
-        return `https://example.com/missing-server-url${formattedPath}`;
+            // If type is specified, use it; otherwise default to "thumbnail"
+            const urlType = type || 'thumbnail';
+
+            return `${baseUrl}/${urlType}/data${formattedPath}`;
+        }
     }
 
     /**
@@ -310,17 +467,18 @@ export class ApiService {
         // Check if it's a video
         const isVideo = formattedPath.match(/\.(mp4|webm|mov|avi|wmv)$/i) !== null;
 
-        if (isVideo && server) {
-            // For videos, just return the server URL with data path - no thumbnail parameter
-            // Videos don't support thumbnails directly
-            return `${server}/data${formattedPath}`;
-        } else if (isVideo) {
-            // If we get here, it's a video without a server - this shouldn't happen
-            console.warn('Video without server URL for thumbnail:', path);
-            return `https://example.com/missing-server-url${formattedPath}`;
+        if (isVideo) {
+            // For videos, use the server if available
+            if (server) {
+                return `${server}/data${formattedPath}`;
+            }
+            // If no server provided, use the current domain
+            const domain = this.getDomain();
+            return `https://${domain}/data${formattedPath}`;
         }
 
-        // For images, use the standard file URL with thumbnail type
-        return this.getFileUrl(formattedPath, server, 'thumbnail');
+        // For images, always use the thumbnail type
+        const baseUrl = this.getImageBaseUrl();
+        return `${baseUrl}/thumbnail/data${formattedPath}`;
     }
 }

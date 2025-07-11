@@ -4,14 +4,9 @@ import styled from 'styled-components';
 import { ApiService } from '../services/api';
 import type { CreatorProfile } from '../types/profile';
 import type { Post as ApiPost } from '../types/posts';
+import type { Preview, Attachment } from '../types/posts';
+import type { LegacyPost } from '../types/posts-legacy';
 import type { File as MediaTypeFile } from '../types/common';
-
-// Make sure the Post type has all fields as optional
-interface Post extends Omit<ApiPost, 'published' | 'added' | 'edited'> {
-  published?: string;
-  added?: string;
-  edited?: string | null;
-}
 
 // Define a MediaFile type to replace the File interface
 interface MediaFile extends MediaTypeFile {
@@ -469,30 +464,25 @@ type MediaSortField = 'added' | 'size' | 'duration';
 const ProfilePage: React.FC = () => {
   const { service, id } = useParams<{ service: string; id: string }>();
   const navigate = useNavigate();
-  const [creator, setCreator] = useState<CreatorProfile | null>(null);
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [media, setMedia] = useState<MediaFile[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'posts' | 'media'>('posts');
-  const [expandedPosts, setExpandedPosts] = useState<ExpandedPostState>({});
+  const apiService = new ApiService();
 
-  // Post sorting and pagination states
+  const [creator, setCreator] = useState<any>(null);
+  const [posts, setPosts] = useState<LegacyPost[]>([]);
+  const [media, setMedia] = useState<MediaFile[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [activeTab, setActiveTab] = useState<'posts' | 'media'>('posts');
   const [postSortBy, setPostSortBy] = useState<PostSortField>('published');
   const [postSortDirection, setPostSortDirection] = useState<'asc' | 'desc'>('desc');
-  const [currentPostPage, setCurrentPostPage] = useState(1);
-  const postsPerPage = 10;
-
-  // Media filtering, sorting and pagination states
-  const [mediaFilter, setMediaFilter] = useState<'all' | 'images' | 'videos'>('all');
   const [mediaSortBy, setMediaSortBy] = useState<MediaSortField>('added');
   const [mediaSortDirection, setMediaSortDirection] = useState<'asc' | 'desc'>('desc');
-  const [currentMediaPage, setCurrentMediaPage] = useState(1);
-  const mediaPerPage = 10;
-
+  const [mediaFilter, setMediaFilter] = useState<string>('');
+  const [expandedPosts, setExpandedPosts] = useState<ExpandedPostState>({});
   const [selectedMedia, setSelectedMedia] = useState<MediaFile | null>(null);
   const [currentMediaIndex, setCurrentMediaIndex] = useState<number>(-1);
-
-  const apiService = new ApiService();
+  const [postsPage, setPostsPage] = useState<number>(1);
+  const [mediaPage, setMediaPage] = useState<number>(1);
+  const postsPerPage = 20;
+  const mediaPerPage = 30;
 
   useEffect(() => {
     const fetchCreatorData = async () => {
@@ -500,62 +490,61 @@ const ProfilePage: React.FC = () => {
 
       setLoading(true);
       try {
-        // Fetch creator details
-        const creatorResponse = await apiService.getCreator(service, id);
+        // Fetch creator profile
+        const creatorResponse = await apiService.getCreatorProfile(service, id);
+
+        // Try to get creator from the creator list to get favorited count
+        const creatorFromList = await apiService.getCreator(service, id);
+
         if (creatorResponse.data) {
-          setCreator(creatorResponse.data);
+          console.log('Creator profile data:', creatorResponse.data);
+
+          // If we have a creator from the list with favorited count, use that value
+          const favorited = creatorFromList.data?.favorited || creatorResponse.data.favorited || 0;
+
+          // Create creator object with favorited count from either source
+          setCreator({
+            ...creatorResponse.data,
+            favorited
+          });
+        } else if (creatorResponse.error) {
+          console.error('Error fetching creator profile:', creatorResponse.error);
+          // Set a minimal creator object with default values
+          setCreator({
+            id: id,
+            name: id,
+            service: service,
+            favorited: creatorFromList.data?.favorited || 0,
+            updated: Math.floor(Date.now() / 1000)
+          });
         }
 
         // Fetch creator posts
         const postsResponse = await apiService.getCreatorPosts(service, id);
         if (postsResponse.data) {
-          setPosts(postsResponse.data as Post[]);
+          setPosts(postsResponse.data);
 
           // Extract all media files from posts
           const allMedia: MediaFile[] = [];
           postsResponse.data.forEach(post => {
-            // Get timestamp from post published date or use current time
-            const currentTime = Math.floor(Date.now() / 1000);
-            let timestamp = currentTime;
-
-            if (post.published && typeof post.published === 'string') {
-              try {
-                const date = new Date(post.published);
-                if (!isNaN(date.getTime())) {
-                  timestamp = Math.floor(date.getTime() / 1000);
-                }
-              } catch (e) {
-                console.error('Error parsing date:', e);
-              }
-            }
-
-            // Add main file if exists
-            if (post.file) {
-              const fileWithId: MediaFile = {
-                ...post.file,
-                id: `${post.id}-main`,
-                added: timestamp
-              };
-              allMedia.push(fileWithId);
-            }
-
-            // Add attachments if exist
-            if (post.attachments && post.attachments.length > 0) {
-              post.attachments.forEach((attachment, index) => {
-                const attachmentWithId: MediaFile = {
-                  ...attachment,
-                  id: `${post.id}-attachment-${index}`,
-                  added: timestamp
-                };
-                allMedia.push(attachmentWithId);
-              });
-            }
+            const postFiles = getPostMediaFiles(post);
+            allMedia.push(...postFiles);
           });
 
           setMedia(allMedia);
+        } else if (postsResponse.error) {
+          console.error('Error fetching creator posts:', postsResponse.error);
         }
       } catch (error) {
         console.error('Error fetching creator data:', error);
+        // Set a minimal creator object with default values
+        setCreator({
+          id: id,
+          name: id,
+          service: service,
+          favorited: 0,
+          updated: Math.floor(Date.now() / 1000)
+        });
       } finally {
         setLoading(false);
       }
@@ -635,32 +624,32 @@ const ProfilePage: React.FC = () => {
 
   // Get sorted and paginated posts
   const getSortedAndPaginatedPosts = () => {
-    let sortedPosts = [...posts];
+    // Sort posts based on the selected sort field and direction
+    const sortedPosts = [...posts].sort((a, b) => {
+      const getDate = (dateStr: string | undefined) => {
+        if (!dateStr) return 0;
+        const date = new Date(dateStr);
+        return isNaN(date.getTime()) ? 0 : date.getTime();
+      };
 
-    sortedPosts.sort((a, b) => {
-      if (postSortBy === 'title') {
-        const titleA = a.title?.toLowerCase() || '';
-        const titleB = b.title?.toLowerCase() || '';
-        return postSortDirection === 'asc' ? titleA.localeCompare(titleB) : titleB.localeCompare(titleA);
-      } else { // published date
-        const getDate = (dateStr: string | undefined) => {
-          if (!dateStr) return 0;
-          try {
-            const date = new Date(dateStr);
-            return isNaN(date.getTime()) ? 0 : date.getTime();
-          } catch (e) {
-            return 0;
-          }
-        };
-
+      if (postSortBy === 'published') {
         const dateA = getDate(a.published);
         const dateB = getDate(b.published);
         return postSortDirection === 'asc' ? dateA - dateB : dateB - dateA;
+      } else if (postSortBy === 'title') {
+        const titleA = a.title || '';
+        const titleB = b.title || '';
+        return postSortDirection === 'asc'
+          ? titleA.localeCompare(titleB)
+          : titleB.localeCompare(titleA);
       }
+      return 0;
     });
 
-    const startIndex = (currentPostPage - 1) * postsPerPage;
-    return sortedPosts.slice(startIndex, startIndex + postsPerPage);
+    // Paginate posts
+    const indexOfLastPost = postsPage * postsPerPage;
+    const indexOfFirstPost = indexOfLastPost - postsPerPage;
+    return sortedPosts.slice(indexOfFirstPost, indexOfLastPost);
   };
 
   const displayedPosts = getSortedAndPaginatedPosts();
@@ -670,12 +659,12 @@ const ProfilePage: React.FC = () => {
     if (
       i === 1 || // First page
       i === totalPostPages || // Last page
-      (i >= currentPostPage - 1 && i <= currentPostPage + 1) // Pages around current
+      (i >= postsPage - 1 && i <= postsPage + 1) // Pages around current
     ) {
       postPageNumbers.push(i);
     } else if (
-      (i === 2 && currentPostPage > 3) || // Ellipsis after first page
-      (i === totalPostPages - 1 && currentPostPage < totalPostPages - 2) // Ellipsis before last page
+      (i === 2 && postsPage > 3) || // Ellipsis after first page
+      (i === totalPostPages - 1 && postsPage < totalPostPages - 2) // Ellipsis before last page
     ) {
       postPageNumbers.push(-1); // -1 represents an ellipsis
     }
@@ -717,9 +706,10 @@ const ProfilePage: React.FC = () => {
   };
 
   const paginatedMedia = () => {
-    const filtered = getFilteredMedia();
-    const startIndex = (currentMediaPage - 1) * mediaPerPage;
-    return filtered.slice(startIndex, startIndex + mediaPerPage);
+    const filteredMedia = getFilteredMedia();
+    const indexOfLastMedia = mediaPage * mediaPerPage;
+    const indexOfFirstMedia = indexOfLastMedia - mediaPerPage;
+    return filteredMedia.slice(indexOfFirstMedia, indexOfLastMedia);
   };
 
   const displayedMedia = paginatedMedia();
@@ -729,12 +719,12 @@ const ProfilePage: React.FC = () => {
     if (
       i === 1 || // First page
       i === totalMediaPages || // Last page
-      (i >= currentMediaPage - 1 && i <= currentMediaPage + 1) // Pages around current
+      (i >= mediaPage - 1 && i <= mediaPage + 1) // Pages around current
     ) {
       mediaPageNumbers.push(i);
     } else if (
-      (i === 2 && currentMediaPage > 3) || // Ellipsis after first page
-      (i === totalMediaPages - 1 && currentMediaPage < totalMediaPages - 2) // Ellipsis before last page
+      (i === 2 && mediaPage > 3) || // Ellipsis after first page
+      (i === totalMediaPages - 1 && mediaPage < totalMediaPages - 2) // Ellipsis before last page
     ) {
       mediaPageNumbers.push(-1); // -1 represents an ellipsis
     }
@@ -750,90 +740,105 @@ const ProfilePage: React.FC = () => {
   };
 
   const getThumbnailUrl = (file: MediaFile) => {
-    if (isVideo(file) && file.path) {
-      // For videos, we might have a thumbnail
-      return apiService.getThumbnailUrl(file.path, file.server);
-    }
-    // For images, use the image itself
-    return getMediaUrl(file);
+    return apiService.getThumbnailUrl(file.path, file.server);
   };
 
   // Get all media files for a post (main file + attachments)
-  const getPostMediaFiles = (post: Post): MediaFile[] => {
+  const getPostMediaFiles = (post: LegacyPost): MediaFile[] => {
     const files: MediaFile[] = [];
+    const timestamp = post.published
+      ? Math.floor(new Date(post.published).getTime() / 1000)
+      : Math.floor(Date.now() / 1000);
 
-    // Get timestamp for file
-    const currentTime = Math.floor(Date.now() / 1000);
-    let timestamp = currentTime;
-
-    if (post.published && typeof post.published === 'string') {
-      try {
-        const date = new Date(post.published);
-        if (!isNaN(date.getTime())) {
-          timestamp = Math.floor(date.getTime() / 1000);
-        }
-      } catch (e) {
-        console.error('Error parsing date:', e);
-      }
-    }
+    // Keep track of file paths we've already added to prevent duplicates
+    const addedPaths = new Set<string>();
 
     // Add main file if exists
     if (post.file) {
       files.push({
+        ...post.file,
         id: `${post.id}-main`,
-        name: post.file.name,
-        path: post.file.path,
-        server: post.file.server,
-        type: post.file.type || 'thumbnail',
-        added: timestamp
+        added: timestamp,
+        // Use 'file' type for main file
+        type: 'file'
       });
+      addedPaths.add(post.file.path);
     }
 
     // Add attachments if exist
     if (post.attachments && post.attachments.length > 0) {
       post.attachments.forEach((attachment, index) => {
+        // Skip if we already have this file
+        if (addedPaths.has(attachment.path)) return;
+
         files.push({
+          ...attachment,
           id: `${post.id}-attachment-${index}`,
-          name: attachment.name,
-          path: attachment.path,
-          server: attachment.server,
-          type: attachment.type || 'thumbnail',
-          added: timestamp
+          added: timestamp,
+          // Use 'attachment' type for attachments
+          type: 'attachment'
         });
+        addedPaths.add(attachment.path);
       });
     }
 
-    // Check for result_attachments (for videos)
-    if (post.result_attachments && post.result_attachments.length > 0) {
-      // Find the index of the current post in the results array
-      const postIndex = posts.findIndex(p => p.id === post.id);
-      if (postIndex >= 0 && post.result_attachments[postIndex]) {
-        post.result_attachments[postIndex].forEach((attachment, index) => {
-          // Check if this attachment already exists in files
+    // Check for _attachments (for videos)
+    if (post._attachments && post._attachments.length > 0) {
+      post._attachments.forEach((attachment: any, index: number) => {
+        // Check if this attachment already exists in files
+        if (addedPaths.has(attachment.path)) {
+          // Update existing file with server info if needed
           const existingIndex = files.findIndex(f => f.path === attachment.path);
-          if (existingIndex >= 0) {
-            // Update existing file with server info
+          if (existingIndex >= 0 && !files[existingIndex].server) {
             files[existingIndex].server = attachment.server;
-          } else {
-            // Add as new file
-            files.push({
-              id: `${post.id}-result-attachment-${index}`,
-              name: attachment.name,
-              path: attachment.path,
-              server: attachment.server,
-              type: 'thumbnail',
-              added: timestamp
-            });
           }
-        });
-      }
+        } else {
+          // Add as new file
+          files.push({
+            id: `${post.id}-result-attachment-${index}`,
+            name: attachment.name,
+            path: attachment.path,
+            server: attachment.server,
+            // Use 'thumbnail' type for result attachments
+            type: 'thumbnail',
+            added: timestamp
+          });
+          addedPaths.add(attachment.path);
+        }
+      });
+    }
+
+    // Add preview files if they exist
+    if (post._previews && post._previews.length > 0) {
+      post._previews.forEach((preview, index) => {
+        // Check if this preview already exists in files
+        if (addedPaths.has(preview.path)) {
+          // Update existing file with server info if needed
+          const existingIndex = files.findIndex(f => f.path === preview.path);
+          if (existingIndex >= 0 && !files[existingIndex].server) {
+            files[existingIndex].server = preview.server;
+          }
+        } else {
+          // Add as new file
+          files.push({
+            id: `${post.id}-preview-${index}`,
+            name: preview.name || `preview-${index}`,
+            path: preview.path,
+            server: preview.server,
+            // Use 'thumbnail' type for previews to ensure correct URL construction
+            type: 'thumbnail',
+            added: timestamp
+          });
+          addedPaths.add(preview.path);
+        }
+      });
     }
 
     return files;
   };
 
   // Navigate to full post view
-  const navigateToPost = (post: Post) => {
+  const navigateToPost = (post: LegacyPost) => {
     const currentInstance = apiService.getCurrentApiInstance();
     navigate(`/${currentInstance.url}/${service}/user/${id}/post/${post.id}`);
   };
@@ -846,13 +851,15 @@ const ProfilePage: React.FC = () => {
     );
   }
 
-  if (!creator) {
-    return (
-      <ProfileContainer>
-        <p>Creator not found</p>
-      </ProfileContainer>
-    );
-  }
+  // Create a safe creator object that always has the required properties
+  const safeCreator = creator || {
+    id: id || '',
+    name: id || '',
+    service: service || '',
+    favorited: 0,
+    updated: Math.floor(Date.now() / 1000),
+    links: []
+  };
 
   return (
     <ProfileContainer>
@@ -868,7 +875,7 @@ const ProfilePage: React.FC = () => {
         <ProfileInfo>
           <ProfilePicture imageUrl={apiService.getProfilePictureUrl(service!, id!)} />
           <ProfileDetails>
-            <CreatorName>{creator.name}</CreatorName>
+            <CreatorName>{safeCreator.name || id}</CreatorName>
             <StatsRow>
               <Stat>
                 <span>Service:</span>
@@ -876,17 +883,17 @@ const ProfilePage: React.FC = () => {
               </Stat>
               <Stat>
                 <span>❤️</span>
-                <strong>{creator.favorited.toLocaleString()}</strong>
+                <strong>{safeCreator.favorited ? safeCreator.favorited.toLocaleString() : '0'}</strong>
               </Stat>
               <Stat>
                 <span>Last Updated:</span>
-                <strong>{formatTimestamp(creator.updated)}</strong>
+                <strong>{safeCreator.updated ? formatTimestamp(safeCreator.updated) : 'Unknown'}</strong>
               </Stat>
             </StatsRow>
 
-            {creator.links && creator.links.length > 0 && (
+            {safeCreator.links && safeCreator.links.length > 0 && (
               <LinkedAccounts>
-                {creator.links.map((link, index) => (
+                {safeCreator.links.map((link: { platform: string; url: string }, index: number) => (
                   <SocialLink key={index} href={link.url} target="_blank" rel="noopener noreferrer">
                     {link.platform === 'twitter' && '𝕏 Twitter'}
                     {link.platform === 'instagram' && '📷 Instagram'}
@@ -1017,8 +1024,8 @@ const ProfilePage: React.FC = () => {
           {totalPostPages > 1 && (
             <Pagination>
               <PageButton
-                onClick={() => setCurrentPostPage(prev => Math.max(1, prev - 1))}
-                disabled={currentPostPage === 1}
+                onClick={() => setPostsPage(prev => Math.max(1, prev - 1))}
+                disabled={postsPage === 1}
               >
                 ←
               </PageButton>
@@ -1029,8 +1036,8 @@ const ProfilePage: React.FC = () => {
                 ) : (
                   <PageButton
                     key={`post-page-${pageNum}`}
-                    active={pageNum === currentPostPage}
-                    onClick={() => setCurrentPostPage(pageNum)}
+                    active={pageNum === postsPage}
+                    onClick={() => setPostsPage(pageNum)}
                   >
                     {pageNum}
                   </PageButton>
@@ -1038,8 +1045,8 @@ const ProfilePage: React.FC = () => {
               ))}
 
               <PageButton
-                onClick={() => setCurrentPostPage(prev => Math.min(totalPostPages, prev + 1))}
-                disabled={currentPostPage === totalPostPages}
+                onClick={() => setPostsPage(prev => Math.min(totalPostPages, prev + 1))}
+                disabled={postsPage === totalPostPages}
               >
                 →
               </PageButton>
@@ -1120,8 +1127,8 @@ const ProfilePage: React.FC = () => {
           {totalMediaPages > 1 && (
             <Pagination>
               <PageButton
-                onClick={() => setCurrentMediaPage(prev => Math.max(1, prev - 1))}
-                disabled={currentMediaPage === 1}
+                onClick={() => setMediaPage(prev => Math.max(1, prev - 1))}
+                disabled={mediaPage === 1}
               >
                 ←
               </PageButton>
@@ -1132,8 +1139,8 @@ const ProfilePage: React.FC = () => {
                 ) : (
                   <PageButton
                     key={`media-page-${pageNum}`}
-                    active={pageNum === currentMediaPage}
-                    onClick={() => setCurrentMediaPage(pageNum)}
+                    active={pageNum === mediaPage}
+                    onClick={() => setMediaPage(pageNum)}
                   >
                     {pageNum}
                   </PageButton>
@@ -1141,8 +1148,8 @@ const ProfilePage: React.FC = () => {
               ))}
 
               <PageButton
-                onClick={() => setCurrentMediaPage(prev => Math.min(totalMediaPages, prev + 1))}
-                disabled={currentMediaPage === totalMediaPages}
+                onClick={() => setMediaPage(prev => Math.min(totalMediaPages, prev + 1))}
+                disabled={mediaPage === totalMediaPages}
               >
                 →
               </PageButton>

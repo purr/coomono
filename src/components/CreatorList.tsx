@@ -1,15 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import styled from 'styled-components';
-import { CreatorCard } from './CreatorCard';
-import { SearchBar } from './SearchBar';
-import type { Creator } from '../types/api';
+import React, { useState, useEffect } from "react";
+import styled from "styled-components";
+import { CreatorCard } from "./CreatorCard";
+import { SearchBar } from "./SearchBar";
+import type { Creator } from "../types/creator";
 
 interface CreatorListProps {
   creators: Creator[];
   isLoading: boolean;
 }
 
-type SortField = 'favorited' | 'updated' | 'name';
+type SortField = "favorited" | "updated" | "name";
 
 const Container = styled.div`
   max-width: 1200px;
@@ -50,7 +50,7 @@ const SortDirectionSelect = styled(Select)`
   min-width: 60px;
 
   & option {
-    font-family: 'Arial', sans-serif;
+    font-family: "Arial", sans-serif;
   }
 `;
 
@@ -83,28 +83,33 @@ const PageButton = styled.button<{ active?: boolean }>`
   align-items: center;
   justify-content: center;
   border-radius: 4px;
-  background: ${({ theme, active }) => active ? theme.rose : theme.overlay};
-  color: ${({ theme, active }) => active ? theme.base : theme.text};
-  border: 1px solid ${({ theme, active }) => active ? theme.rose : theme.highlightMed};
+  background: ${({ theme, active }) => (active ? theme.rose : theme.overlay)};
+  color: ${({ theme, active }) => (active ? theme.base : theme.text)};
+  border: 1px solid
+    ${({ theme, active }) => (active ? theme.rose : theme.highlightMed)};
 
   &:hover {
-    background: ${({ theme, active }) => active ? theme.rose : theme.highlightMed};
+    background: ${({ theme, active }) =>
+    active ? theme.rose : theme.highlightMed};
   }
 `;
 
-export const CreatorList: React.FC<CreatorListProps> = ({ creators, isLoading }) => {
+export const CreatorList: React.FC<CreatorListProps> = ({
+  creators,
+  isLoading,
+}) => {
   const [filteredCreators, setFilteredCreators] = useState<Creator[]>([]);
-  const [selectedService, setSelectedService] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<SortField>('favorited');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
-  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [selectedService, setSelectedService] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<SortField>("favorited");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+  const [searchQuery, setSearchQuery] = useState<string>("");
   const [currentPage, setCurrentPage] = useState(1);
   const creatorsPerPage = 18;
 
   // Extract available services from API data
   const availableServices = React.useMemo(() => {
     const services = new Set<string>();
-    creators.forEach(creator => {
+    creators.forEach((creator) => {
       services.add(creator.service);
     });
     return Array.from(services).sort();
@@ -117,25 +122,26 @@ export const CreatorList: React.FC<CreatorListProps> = ({ creators, isLoading })
     // Filter by search query
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      result = result.filter(creator =>
-        creator.name.toLowerCase().includes(query) ||
-        creator.id.toLowerCase().includes(query)
+      result = result.filter(
+        (creator) =>
+          creator.name.toLowerCase().includes(query) ||
+          creator.id.toLowerCase().includes(query)
       );
     }
 
     // Filter by service
-    if (selectedService !== 'all') {
-      result = result.filter(creator => creator.service === selectedService);
+    if (selectedService !== "all") {
+      result = result.filter((creator) => creator.service === selectedService);
     }
 
     // Sort by selected criterion
     result.sort((a, b) => {
-      if (sortBy === 'name') {
+      if (sortBy === "name") {
         // Alphabetical sort for names
         const nameA = a.name.toLowerCase();
         const nameB = b.name.toLowerCase();
 
-        if (sortDirection === 'asc') {
+        if (sortDirection === "asc") {
           return nameA.localeCompare(nameB);
         } else {
           return nameB.localeCompare(nameA);
@@ -145,9 +151,7 @@ export const CreatorList: React.FC<CreatorListProps> = ({ creators, isLoading })
         const valueA = a[sortBy];
         const valueB = b[sortBy];
 
-        return sortDirection === 'asc'
-          ? valueA - valueB
-          : valueB - valueA;
+        return sortDirection === "asc" ? valueA - valueB : valueB - valueA;
       }
     });
 
@@ -159,7 +163,10 @@ export const CreatorList: React.FC<CreatorListProps> = ({ creators, isLoading })
   // Calculate pagination
   const totalPages = Math.ceil(filteredCreators.length / creatorsPerPage);
   const startIndex = (currentPage - 1) * creatorsPerPage;
-  const displayedCreators = filteredCreators.slice(startIndex, startIndex + creatorsPerPage);
+  const displayedCreators = filteredCreators.slice(
+    startIndex,
+    startIndex + creatorsPerPage
+  );
 
   // Generate page numbers
   const pageNumbers: number[] = [];
@@ -217,8 +224,10 @@ export const CreatorList: React.FC<CreatorListProps> = ({ creators, isLoading })
 
           <SortDirectionSelect
             value={sortDirection}
-            onChange={(e) => setSortDirection(e.target.value as 'asc' | 'desc')}
-            title={sortDirection === 'desc' ? 'Descending order' : 'Ascending order'}
+            onChange={(e) => setSortDirection(e.target.value as "asc" | "desc")}
+            title={
+              sortDirection === "desc" ? "Descending order" : "Ascending order"
+            }
           >
             <option value="desc" aria-label="Descending order">
               {String.fromCharCode(8595)} {/* Down arrow */}
@@ -236,12 +245,15 @@ export const CreatorList: React.FC<CreatorListProps> = ({ creators, isLoading })
         <>
           <Grid>
             {displayedCreators.map((creator) => (
-              <CreatorCard key={`${creator.service}-${creator.id}`} creator={creator} />
+              <CreatorCard
+                key={`${creator.service}-${creator.id}`}
+                creator={creator}
+              />
             ))}
           </Grid>
 
           {filteredCreators.length === 0 && (
-            <div style={{ textAlign: 'center', margin: '48px 0' }}>
+            <div style={{ textAlign: "center", margin: "48px 0" }}>
               <p>No creators found matching your search criteria.</p>
             </div>
           )}
@@ -249,15 +261,20 @@ export const CreatorList: React.FC<CreatorListProps> = ({ creators, isLoading })
           {totalPages > 1 && (
             <Pagination>
               <PageButton
-                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
                 disabled={currentPage === 1}
               >
                 ←
               </PageButton>
 
-              {uniquePageNumbers.map((pageNum, index) => (
+              {uniquePageNumbers.map((pageNum, index) =>
                 pageNum === -1 ? (
-                  <span key={`ellipsis-${index}`} style={{ alignSelf: 'center' }}>...</span>
+                  <span
+                    key={`ellipsis-${index}`}
+                    style={{ alignSelf: "center" }}
+                  >
+                    ...
+                  </span>
                 ) : (
                   <PageButton
                     key={pageNum}
@@ -267,10 +284,12 @@ export const CreatorList: React.FC<CreatorListProps> = ({ creators, isLoading })
                     {pageNum}
                   </PageButton>
                 )
-              ))}
+              )}
 
               <PageButton
-                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                onClick={() =>
+                  setCurrentPage((prev) => Math.min(totalPages, prev + 1))
+                }
                 disabled={currentPage === totalPages}
               >
                 →

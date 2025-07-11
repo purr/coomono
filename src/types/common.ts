@@ -45,6 +45,9 @@ export const ApiPath = {
 
     // Posts of a specific creator (old endpoint)
     CREATOR_POSTS: "/api/v1/{platform}/user/{name}/posts",
+
+    // Single post endpoint
+    POST: "/api/v1/{platform}/user/{name}/post/{postId}",
 } as const;
 
 /**

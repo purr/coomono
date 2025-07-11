@@ -20,3 +20,9 @@ export interface Link {
     platform: string;
     url: string;
 }
+
+/**
+ * Complete API response for creators.txt endpoint
+ * This is typically just an array of Creator objects
+ */
+export type CreatorsResponse = Creator[];

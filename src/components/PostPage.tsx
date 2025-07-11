@@ -2,13 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { ApiService } from '../services/api';
-import type { Post } from '../types/posts';
+import type { Post, PostResponse, Attachment, Preview, Video, Props } from '../types/posts';
 import type { File as MediaTypeFile } from '../types/common';
 
 // Define a MediaFile type to replace the File interface
 interface MediaFile extends MediaTypeFile {
   id: string;
   server?: string;
+  type?: string; // 'file', 'attachment', 'preview', 'video', etc.
 }
 
 // Styled components
@@ -228,13 +229,19 @@ const PostPage: React.FC = () => {
   const apiService = new ApiService();
 
   const [post, setPost] = useState<Post | null>(null);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [previews, setPreviews] = useState<Preview[]>([]);
+  const [videos, setVideos] = useState<Video[]>([]);
+  const [props, setProps] = useState<Props | null>(null);
   const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedMedia, setSelectedMedia] = useState<MediaFile | null>(null);
   const [currentMediaIndex, setCurrentMediaIndex] = useState<number>(-1);
 
   useEffect(() => {
-    fetchPostData();
+    if (service && id && postId) {
+      fetchPostData();
+    }
   }, [service, id, postId]);
 
   const fetchPostData = async () => {
@@ -242,40 +249,109 @@ const PostPage: React.FC = () => {
 
     setLoading(true);
     try {
-      // Fetch creator posts
-      const postsResponse = await apiService.getCreatorPosts(service, id);
-      if (postsResponse.data) {
-        // Find the specific post
-        const foundPost = postsResponse.data.find(p => p.id === postId);
-        if (foundPost) {
-          setPost(foundPost);
+      // Fetch post using the new API method
+      const response = await apiService.getPost(service, id, postId);
 
-          // Get timestamp from post published date or use current time
-          const timestamp = typeof foundPost.published === 'string' && foundPost.published
-            ? new Date(foundPost.published).getTime() / 1000
-            : Date.now() / 1000;
+      if (response.data) {
+        const postData = response.data;
+        setPost(postData.post);
+        setAttachments(postData.attachments || []);
+        setPreviews(postData.previews || []);
+        setVideos(postData.videos || []);
+        setProps(postData.props || null);
 
-          // Collect all media files from the post
-          const allMedia: MediaFile[] = [
-            ...(foundPost.file ? [{ id: 'post-file', name: foundPost.file.name, path: foundPost.file.path, server: foundPost.service, type: 'file' }] : []),
-            ...(foundPost.attachments?.map((attachment, index) => ({
+        // Process media files from the complete response
+        const allMedia: MediaFile[] = [];
+        // Keep track of file paths we've already added to prevent duplicates
+        const addedPaths = new Set<string>();
+
+        // Add videos first (highest priority)
+        if (postData.videos && postData.videos.length > 0) {
+          postData.videos.forEach((video, index) => {
+            // Skip if we already have this file
+            if (addedPaths.has(video.path)) return;
+
+            const mediaFile: MediaFile = {
+              id: `video-${index}`,
+              name: video.name,
+              path: video.path,
+              server: video.server,
+              // Use 'video' type for videos
+              type: 'video'
+            };
+            allMedia.push(mediaFile);
+            addedPaths.add(video.path);
+          });
+        }
+
+        // Add main file if it exists
+        if (postData.post.file) {
+          // Skip if we already have this file
+          if (!addedPaths.has(postData.post.file.path)) {
+            const mainFile: MediaFile = {
+              id: 'post-file',
+              name: postData.post.file.name,
+              path: postData.post.file.path,
+              server: findServerForFile(postData.post.file.path, postData.previews),
+              type: 'file'
+            };
+            allMedia.push(mainFile);
+            addedPaths.add(postData.post.file.path);
+          }
+        }
+
+        // Add attachments with server information
+        if (postData.attachments && postData.attachments.length > 0) {
+          postData.attachments.forEach((attachment, index) => {
+            // Skip if we already have this file
+            if (addedPaths.has(attachment.path)) return;
+
+            const mediaFile: MediaFile = {
               id: `attachment-${index}`,
               name: attachment.name,
               path: attachment.path,
-              server: foundPost.service,
-              type: 'attachment',
-              duration: (attachment as any).duration, // Assuming duration might exist on attachment
-            })) || []),
-          ].filter(Boolean) as MediaFile[];
-
-          setMediaFiles(allMedia);
+              server: attachment.server,
+              // Use 'attachment' type for attachments
+              type: 'attachment'
+            };
+            allMedia.push(mediaFile);
+            addedPaths.add(attachment.path);
+          });
         }
+
+        // Add previews with server information
+        if (postData.previews && postData.previews.length > 0) {
+          postData.previews.forEach((preview, index) => {
+            // Skip if we already have this file
+            if (addedPaths.has(preview.path)) return;
+
+            const mediaFile: MediaFile = {
+              id: `preview-${index}`,
+              name: preview.name || `preview-${index}`,
+              path: preview.path,
+              server: preview.server,
+              // Use 'thumbnail' type for previews to ensure correct URL construction
+              type: 'thumbnail'
+            };
+            allMedia.push(mediaFile);
+            addedPaths.add(preview.path);
+          });
+        }
+
+        console.log(`Found ${allMedia.length} unique media files:`, allMedia);
+        setMediaFiles(allMedia);
       }
     } catch (error) {
       console.error('Error fetching post:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  // Helper function to find the server for a file path from previews
+  const findServerForFile = (path: string, previews: Preview[]): string => {
+    const preview = previews.find(p => p.path === path);
+    return preview?.server || '';
   };
 
   const handleMediaClick = (file: MediaFile, index: number) => {
@@ -342,12 +418,7 @@ const PostPage: React.FC = () => {
   };
 
   const getThumbnailUrl = (file: MediaFile) => {
-    if (isVideo(file) && file.path) {
-      // For videos, we might have a thumbnail
-      return apiService.getThumbnailUrl(file.path, file.server);
-    }
-    // For images, use the image itself
-    return getMediaUrl(file);
+    return apiService.getThumbnailUrl(file.path, file.server);
   };
 
   if (loading) {
