@@ -67,7 +67,7 @@ const ApiSelector = styled.select`
   margin-right: 1rem;
 `;
 
-const AddApiButton = styled.button`
+const Button = styled.button`
   padding: 8px 16px;
   border-radius: 4px;
   background-color: ${({ theme }) => theme.pine};
@@ -75,7 +75,11 @@ const AddApiButton = styled.button`
   border: none;
   cursor: pointer;
   font-weight: 500;
+  margin-right: 1rem;
 `;
+
+const AddApiButton = styled(Button)``;
+const RefreshButton = styled(Button)``;
 
 // Initialize API service as a singleton
 const apiService = new ApiService();
@@ -90,6 +94,7 @@ const HomePage = () => {
   const [apiInstances, setApiInstances] = useState<ApiInstance[]>(apiService.getAvailableInstances());
   const [refreshKey, setRefreshKey] = useState<number>(0); // Added to force re-renders
   const navigate = useNavigate();
+  const { instance } = useParams<{ instance?: string }>();
 
   // Function to fetch creators
   const fetchCreators = useCallback(async () => {
@@ -121,6 +126,21 @@ const HomePage = () => {
     }
   }, []);
 
+  // Update current API if instance param changes
+  useEffect(() => {
+    if (instance && instance !== currentApi.url) {
+      const matchingInstance = apiInstances.find(api => api.url === instance);
+      if (matchingInstance) {
+        console.log('Instance changed in URL, updating API instance:', matchingInstance);
+        apiService.setCurrentApiInstance(matchingInstance);
+        setCurrentApi(matchingInstance);
+
+        // Force a refresh of creators when instance changes
+        setRefreshKey(prev => prev + 1);
+      }
+    }
+  }, [instance, apiInstances, currentApi.url]);
+
   const handleApiChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const selectedApiUrl = e.target.value;
     const selectedApi = apiInstances.find(api => api.url === selectedApiUrl);
@@ -132,6 +152,9 @@ const HomePage = () => {
 
       // Navigate to the instance-specific URL
       navigate(`/${selectedApi.url}`);
+
+      // Force a refresh of creators when instance changes
+      setRefreshKey(prev => prev + 1);
     }
   };
 
@@ -165,10 +188,18 @@ const HomePage = () => {
     }
   };
 
+  const handleRefresh = () => {
+    // Clear cache for current domain
+    apiService.clearCreatorsCache();
+
+    // Force a refresh
+    setRefreshKey(prev => prev + 1);
+  };
+
   // Fetch creators when component mounts or API changes
   useEffect(() => {
     fetchCreators();
-  }, [fetchCreators, refreshKey]); // Added refreshKey dependency
+  }, [fetchCreators, refreshKey, currentApi.url]); // Added currentApi.url dependency
 
   return (
     <AppContainer>
@@ -187,6 +218,9 @@ const HomePage = () => {
               </option>
             ))}
           </ApiSelector>
+          <RefreshButton onClick={handleRefresh}>
+            Refresh
+          </RefreshButton>
           <AddApiButton onClick={handleAddCustomApi}>
             Add Custom API
           </AddApiButton>
@@ -216,9 +250,9 @@ function App() {
       <ThemeToggle />
       <BrowserRouter basename={basePath}>
         <Routes>
-          <Route path="/" element={<HomePage />} />
+          <Route path="/" element={<Navigate to="/coomer.su" replace />} />
           <Route path="/:instance/*" element={<InstanceRouter />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/coomer.su" replace />} />
         </Routes>
       </BrowserRouter>
     </ThemeProvider>
@@ -229,12 +263,23 @@ function App() {
 const InstanceRouter = () => {
   const { instance } = useParams();
   const navigate = useNavigate();
+  const [error, setError] = useState<string | null>(null);
+  const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
 
   useEffect(() => {
-    // Check if the instance is valid and set it as the current API instance
-    if (instance) {
+    const handleInstanceSelection = async () => {
       const apiService = new ApiService();
       const availableInstances = apiService.getAvailableInstances();
+      const defaultInstance = availableInstances.find(api => api.url === "coomer.su");
+
+      // If no instance specified, redirect to default
+      if (!instance) {
+        if (defaultInstance) {
+          apiService.setCurrentApiInstance(defaultInstance);
+          navigate(`/${defaultInstance.url}`, { replace: true });
+        }
+        return;
+      }
 
       // Try to find the instance by URL
       const foundInstance = availableInstances.find(api => api.url === instance);
@@ -243,8 +288,12 @@ const InstanceRouter = () => {
         // Set this as the current instance
         console.log(`Setting instance from URL: ${foundInstance.name}`);
         apiService.setCurrentApiInstance(foundInstance);
+        setError(null);
+
+        // Trigger a refresh to ensure data is loaded for this instance
+        setRefreshTrigger(prev => prev + 1);
       } else {
-        // Try to add it as a new instance
+        // Try to add it as a new instance and validate it
         try {
           const newInstance = {
             name: instance,
@@ -252,25 +301,76 @@ const InstanceRouter = () => {
             isDefault: false
           };
 
+          // Add the new instance
           apiService.addApiInstance(newInstance);
-          apiService.setCurrentApiInstance(newInstance);
-          console.log(`Added new instance from URL: ${newInstance.name}`);
+
+          // Validate the instance
+          const validationResult = await apiService.validateApiInstance(newInstance);
+
+          if (validationResult.isValid) {
+            // Instance is valid, set it as current
+            apiService.setCurrentApiInstance(newInstance);
+            console.log(`Added and validated new instance from URL: ${newInstance.name}`);
+            setError(null);
+
+            // Trigger a refresh to ensure data is loaded for this instance
+            setRefreshTrigger(prev => prev + 1);
+          } else {
+            // Instance is invalid, show error and fallback to default
+            console.error(`Invalid instance ${instance}:`, validationResult.error);
+            setError(`The instance "${instance}" appears to be invalid. Falling back to default.`);
+
+            // Fallback to default instance (coomer.su)
+            if (defaultInstance) {
+              apiService.setCurrentApiInstance(defaultInstance);
+              // Update URL without triggering a new navigation
+              window.history.replaceState(null, '', `/${defaultInstance.url}`);
+
+              // Trigger a refresh to ensure data is loaded for the default instance
+              setRefreshTrigger(prev => prev + 1);
+            }
+          }
         } catch (err) {
           console.error("Invalid instance in URL:", err);
-          navigate("/", { replace: true });
-          return;
+          setError(`The instance "${instance}" appears to be invalid. Falling back to default.`);
+
+          // Fallback to default instance (coomer.su)
+          if (defaultInstance) {
+            apiService.setCurrentApiInstance(defaultInstance);
+            // Update URL without triggering a new navigation
+            window.history.replaceState(null, '', `/${defaultInstance.url}`);
+
+            // Trigger a refresh to ensure data is loaded for the default instance
+            setRefreshTrigger(prev => prev + 1);
+          } else {
+            navigate("/", { replace: true });
+          }
         }
       }
-    }
+    };
+
+    handleInstanceSelection();
   }, [instance, navigate]);
 
+  // Pass the refreshTrigger to HomePage
+  const HomePageWithRefresh = () => (
+    <HomePage key={`home-${refreshTrigger}-${instance}`} />
+  );
+
   return (
-    <Routes>
-      <Route path="/" element={<HomePage />} />
-      <Route path=":service/user/:id" element={<ProfilePage />} />
-      <Route path=":service/user/:id/post/:postId" element={<PostPage />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <>
+      {error && (
+        <ErrorContainer>
+          <ErrorText>{error}</ErrorText>
+        </ErrorContainer>
+      )}
+      <Routes>
+        <Route path="/" element={<HomePageWithRefresh />} />
+        <Route path=":service/user/:id" element={<ProfilePage />} />
+        <Route path=":service/user/:id/post/:postId" element={<PostPage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </>
   );
 };
 

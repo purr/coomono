@@ -345,9 +345,19 @@ const MediaPreview = styled.div<{ imageUrl?: string }>`
   width: 100%;
   height: 180px;
   background-image: url(${props => props.imageUrl || 'none'});
+  background-color: ${props => !props.imageUrl ? ({ theme }) => theme.overlay : 'transparent'};
   background-size: cover;
   background-position: center;
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &::before {
+    content: ${props => !props.imageUrl ? "'No Preview'" : "none"};
+    color: ${({ theme }) => theme.subtle};
+    font-size: 0.9rem;
+  }
 `;
 
 const MediaInfo = styled.div`
@@ -672,21 +682,32 @@ const ProfilePage: React.FC = () => {
   const uniquePostPageNumbers = postPageNumbers.filter((num, index, arr) => arr.indexOf(num) === index);
 
   const getFilteredMedia = () => {
-    let filteredMediaList = [...media];
+    // Filter out files with no path first
+    let filteredMedia = media.filter(file => !!file && !!file.path);
 
     // Apply media type filter
     if (mediaFilter === 'images') {
-      filteredMediaList = filteredMediaList.filter(file =>
-        file.name.match(/\.(jpg|jpeg|png|gif|webp)$/i)
-      );
+      filteredMedia = filteredMedia.filter(file => {
+        // Check file name first
+        if (file.name && file.name.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+          return true;
+        }
+        // Then check path
+        return file.path.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+      });
     } else if (mediaFilter === 'videos') {
-      filteredMediaList = filteredMediaList.filter(file =>
-        file.name.match(/\.(mp4|webm|mov|avi|wmv)$/i)
-      );
+      filteredMedia = filteredMedia.filter(file => {
+        // Check file name first
+        if (file.name && file.name.match(/\.(mp4|webm|mov|avi|wmv)$/i)) {
+          return true;
+        }
+        // Then check path
+        return file.path.match(/\.(mp4|webm|mov|avi|wmv)$/i);
+      });
     }
 
     // Apply sorting
-    filteredMediaList.sort((a, b) => {
+    filteredMedia.sort((a, b) => {
       if (mediaSortBy === 'added') {
         const aAdded = a.added || 0;
         const bAdded = b.added || 0;
@@ -702,7 +723,7 @@ const ProfilePage: React.FC = () => {
       }
     });
 
-    return filteredMediaList;
+    return filteredMedia;
   };
 
   const paginatedMedia = () => {
@@ -732,14 +753,45 @@ const ProfilePage: React.FC = () => {
   const uniqueMediaPageNumbers = mediaPageNumbers.filter((num, index, arr) => arr.indexOf(num) === index);
 
   const isVideo = (file: MediaFile) => {
-    return file.name.match(/\.(mp4|webm|mov|avi|wmv)$/i) !== null;
+    if (!file) return false;
+
+    // First check the name
+    if (file.name && file.name.match(/\.(mp4|webm|mov|avi|wmv)$/i)) {
+      return true;
+    }
+
+    // Fallback to checking the path
+    if (file.path && file.path.match(/\.(mp4|webm|mov|avi|wmv)$/i)) {
+      return true;
+    }
+
+    // If we have a type field, check that as well
+    if (file.type === 'video') {
+      return true;
+    }
+
+    return false;
   };
 
   const getMediaUrl = (file: MediaFile) => {
+    if (!file || !file.path) {
+      console.error('Invalid file or missing path:', file);
+      return '';
+    }
+
+    // For images, always use thumbnail type
+    if (!isVideo(file)) {
+      return apiService.getFileUrl(file.path, file.server, 'thumbnail');
+    }
+    // For videos, use the original type
     return apiService.getFileUrl(file.path, file.server, file.type);
   };
 
   const getThumbnailUrl = (file: MediaFile) => {
+    if (!file || !file.path) {
+      console.error('Invalid file or missing path:', file);
+      return '';
+    }
     return apiService.getThumbnailUrl(file.path, file.server);
   };
 
@@ -1105,7 +1157,7 @@ const ProfilePage: React.FC = () => {
                   key={file.id}
                   onClick={() => handleMediaClick(file, getFilteredMedia().findIndex(m => m.id === file.id))}
                 >
-                  <MediaPreview imageUrl={getThumbnailUrl(file)}>
+                  <MediaPreview imageUrl={file.path ? getThumbnailUrl(file) : undefined}>
                     {isVideo(file) && (
                       <VideoIndicator>
                         {file.duration ? formatDuration(file.duration) : 'Video'}
@@ -1113,7 +1165,7 @@ const ProfilePage: React.FC = () => {
                     )}
                   </MediaPreview>
                   <MediaInfo>
-                    <MediaTitle>{file.name}</MediaTitle>
+                    <MediaTitle>{file.name || 'Untitled'}</MediaTitle>
                     <MediaMeta>
                       <span>{file.added ? formatTimestamp(file.added) : 'Unknown date'}</span>
                       <span>{((file.size || 0) / (1024 * 1024)).toFixed(1)} MB</span>
@@ -1165,12 +1217,24 @@ const ProfilePage: React.FC = () => {
             {isVideo(selectedMedia) ? (
               <VideoPlayer
                 id="media-viewer-video"
-                src={getMediaUrl(selectedMedia)}
+                src={selectedMedia.path ? getMediaUrl(selectedMedia) : ''}
                 controls
                 autoPlay
+                onError={(e) => {
+                  console.error('Video playback error:', e);
+                  alert('Error playing video. The file may be unavailable or in an unsupported format.');
+                }}
               />
             ) : (
-              <ImageViewer src={getMediaUrl(selectedMedia)} alt={selectedMedia.name} />
+              <ImageViewer
+                src={selectedMedia.path ? getMediaUrl(selectedMedia) : ''}
+                alt={selectedMedia.name || 'Image'}
+                onError={(e) => {
+                  console.error('Image loading error:', e);
+                  e.currentTarget.style.display = 'none';
+                  e.currentTarget.parentElement?.insertAdjacentHTML('beforeend', '<div style="padding: 20px; text-align: center;">Image failed to load</div>');
+                }}
+              />
             )}
 
             <MediaViewerControls>

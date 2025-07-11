@@ -111,9 +111,19 @@ const MediaPreview = styled.div<{ imageUrl?: string }>`
   width: 100%;
   height: 180px;
   background-image: url(${props => props.imageUrl || 'none'});
+  background-color: ${props => !props.imageUrl ? ({ theme }) => theme.overlay : 'transparent'};
   background-size: cover;
   background-position: center;
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &::before {
+    content: ${props => !props.imageUrl ? "'No Preview'" : "none"};
+    color: ${({ theme }) => theme.subtle};
+    font-size: 0.9rem;
+  }
 `;
 
 const MediaInfo = styled.div`
@@ -410,14 +420,45 @@ const PostPage: React.FC = () => {
   };
 
   const isVideo = (file: MediaFile) => {
-    return file.name.match(/\.(mp4|webm|mov|avi|wmv)$/i) !== null;
+    if (!file) return false;
+
+    // First check the name
+    if (file.name && file.name.match(/\.(mp4|webm|mov|avi|wmv)$/i)) {
+      return true;
+    }
+
+    // Fallback to checking the path
+    if (file.path && file.path.match(/\.(mp4|webm|mov|avi|wmv)$/i)) {
+      return true;
+    }
+
+    // If we have a type field, check that as well
+    if (file.type === 'video') {
+      return true;
+    }
+
+    return false;
   };
 
   const getMediaUrl = (file: MediaFile) => {
+    if (!file || !file.path) {
+      console.error('Invalid file or missing path:', file);
+      return '';
+    }
+
+    // For images, always use thumbnail type
+    if (!isVideo(file)) {
+      return apiService.getFileUrl(file.path, file.server, 'thumbnail');
+    }
+    // For videos, use the original type
     return apiService.getFileUrl(file.path, file.server, file.type);
   };
 
   const getThumbnailUrl = (file: MediaFile) => {
+    if (!file || !file.path) {
+      console.error('Invalid file or missing path:', file);
+      return '';
+    }
     return apiService.getThumbnailUrl(file.path, file.server);
   };
 
@@ -480,7 +521,7 @@ const PostPage: React.FC = () => {
                   key={file.id}
                   onClick={() => handleMediaClick(file, index)}
                 >
-                  <MediaPreview imageUrl={getThumbnailUrl(file)}>
+                  <MediaPreview imageUrl={file.path ? getThumbnailUrl(file) : undefined}>
                     {isVideo(file) && (
                       <VideoIndicator>
                         {file.duration ? formatDuration(file.duration) : 'Video'}
@@ -488,7 +529,7 @@ const PostPage: React.FC = () => {
                     )}
                   </MediaPreview>
                   <MediaInfo>
-                    <MediaName>{file.name}</MediaName>
+                    <MediaName>{file.name || 'Untitled'}</MediaName>
                   </MediaInfo>
                 </MediaCard>
               ))}
@@ -504,12 +545,24 @@ const PostPage: React.FC = () => {
             {isVideo(selectedMedia) ? (
               <VideoPlayer
                 id="media-viewer-video"
-                src={getMediaUrl(selectedMedia)}
+                src={selectedMedia.path ? getMediaUrl(selectedMedia) : ''}
                 controls
                 autoPlay
+                onError={(e) => {
+                  console.error('Video playback error:', e);
+                  alert('Error playing video. The file may be unavailable or in an unsupported format.');
+                }}
               />
             ) : (
-              <ImageViewer src={getMediaUrl(selectedMedia)} alt={selectedMedia.name} />
+              <ImageViewer
+                src={selectedMedia.path ? getMediaUrl(selectedMedia) : ''}
+                alt={selectedMedia.name || 'Image'}
+                onError={(e) => {
+                  console.error('Image loading error:', e);
+                  e.currentTarget.style.display = 'none';
+                  e.currentTarget.parentElement?.insertAdjacentHTML('beforeend', '<div style="padding: 20px; text-align: center;">Image failed to load</div>');
+                }}
+              />
             )}
 
             <MediaViewerControls>

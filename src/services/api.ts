@@ -81,7 +81,10 @@ export class ApiService {
         // Clear the cache if the domain changed
         if (newUrl !== oldUrl) {
             console.log('Domain changed - clearing cached data');
+            // Make sure to delete the cache for the old URL
             delete ApiService.creatorsCache[oldUrl];
+            // Also delete cache for the new URL to ensure fresh data
+            delete ApiService.creatorsCache[newUrl];
         }
     }
 
@@ -110,6 +113,37 @@ export class ApiService {
     }
 
     /**
+     * Validate an API instance by testing if it can fetch creators
+     * @param instance The instance to validate
+     * @returns Promise with validation result
+     */
+    async validateApiInstance(instance: ApiInstance): Promise<{ isValid: boolean; error?: string }> {
+        const previousInstance = this.currentApiInstance;
+
+        try {
+            // Temporarily set the instance to test
+            this.setCurrentApiInstance(instance);
+
+            // Try to fetch creators as a test
+            const response = await this.getAllCreators();
+
+            if (response.error) {
+                return { isValid: false, error: response.error };
+            }
+
+            return { isValid: true };
+        } catch (error) {
+            return {
+                isValid: false,
+                error: error instanceof Error ? error.message : 'Unknown error occurred'
+            };
+        } finally {
+            // Restore the previous instance
+            this.setCurrentApiInstance(previousInstance);
+        }
+    }
+
+    /**
      * Clear the creators cache for the current domain or all domains
      * @param allDomains Whether to clear cache for all domains
      */
@@ -122,6 +156,15 @@ export class ApiService {
             console.log(`Clearing creators cache for domain: ${domain}`);
             delete ApiService.creatorsCache[domain];
         }
+    }
+
+    /**
+     * Clear all caches for all domains
+     * This is useful for troubleshooting or when switching between instances
+     */
+    clearAllCaches(): void {
+        console.log('Clearing all caches for all domains');
+        ApiService.creatorsCache = {};
     }
 
     /**
@@ -446,10 +489,15 @@ export class ApiService {
             // For images, use the direct image URL with the specified type (thumbnail, attachment, etc.)
             const baseUrl = this.getImageBaseUrl();
 
-            // If type is specified, use it; otherwise default to "thumbnail"
+            // For images, we should generally prefer 'thumbnail' for better loading performance
+            // unless explicitly requesting a different type
             const urlType = type || 'thumbnail';
 
-            return `${baseUrl}/${urlType}/data${formattedPath}`;
+            // Log the URL being constructed for debugging
+            const imageUrl = `${baseUrl}/${urlType}/data${formattedPath}`;
+            console.log(`Constructing image URL: ${imageUrl} (type: ${urlType})`);
+
+            return imageUrl;
         }
     }
 
@@ -479,6 +527,8 @@ export class ApiService {
 
         // For images, always use the thumbnail type
         const baseUrl = this.getImageBaseUrl();
-        return `${baseUrl}/thumbnail/data${formattedPath}`;
+        const thumbnailUrl = `${baseUrl}/thumbnail/data${formattedPath}`;
+        console.log(`Constructing thumbnail URL: ${thumbnailUrl}`);
+        return thumbnailUrl;
     }
 }
