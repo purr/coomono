@@ -9,6 +9,9 @@ import { ThemeToggle } from './components/ThemeToggle';
 import { CreatorList } from './components/CreatorList';
 import ProfilePage from './components/ProfilePage';
 import PostPage from './components/PostPage';
+import BreadcrumbNavigation from './components/BreadcrumbNavigation';
+import LoadingBar from './components/LoadingBar';
+import { NavigationProvider, useNavigation } from './context/NavigationContext';
 import type { Creator } from './types/creators';
 import type { ApiInstance } from './types/common';
 
@@ -92,7 +95,7 @@ const HomePage = () => {
   const [creators, setCreators] = useState<Creator[]>([]);
   const [currentApi, setCurrentApi] = useState<ApiInstance>(apiService.getCurrentApiInstance());
   const [apiInstances, setApiInstances] = useState<ApiInstance[]>(apiService.getAvailableInstances());
-  const [refreshKey, setRefreshKey] = useState<number>(0); // Added to force re-renders
+  const [refreshKey, setRefreshKey] = useState<number>(0); // Used only for manual refresh
   const navigate = useNavigate();
   const { instance } = useParams<{ instance?: string }>();
 
@@ -135,11 +138,11 @@ const HomePage = () => {
         apiService.setCurrentApiInstance(matchingInstance);
         setCurrentApi(matchingInstance);
 
-        // Force a refresh of creators when instance changes
-        setRefreshKey(prev => prev + 1);
+        // Load creators for the new instance
+        fetchCreators();
       }
     }
-  }, [instance, apiInstances, currentApi.url]);
+  }, [instance, apiInstances, currentApi.url, fetchCreators]);
 
   const handleApiChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const selectedApiUrl = e.target.value;
@@ -153,8 +156,8 @@ const HomePage = () => {
       // Navigate to the instance-specific URL
       navigate(`/${selectedApi.url}`);
 
-      // Force a refresh of creators when instance changes
-      setRefreshKey(prev => prev + 1);
+      // The fetchCreators will be called from the effect above
+      // when instance changes, so we don't need to call it here
     }
   };
 
@@ -181,6 +184,9 @@ const HomePage = () => {
 
           // Navigate to the instance-specific URL
           navigate(`/${apiInstance.url}`);
+
+          // The fetchCreators will be called from the effect above
+          // when instance changes, so we don't need to call it here
         }
       } catch (err) {
         alert("Invalid URL. Please enter a valid domain.");
@@ -192,14 +198,14 @@ const HomePage = () => {
     // Clear cache for current domain
     apiService.clearCreatorsCache();
 
-    // Force a refresh
-    setRefreshKey(prev => prev + 1);
+    // Force a refresh by triggering the fetchCreators function
+    fetchCreators();
   };
 
-  // Fetch creators when component mounts or API changes
+  // Fetch creators on initial mount only
   useEffect(() => {
     fetchCreators();
-  }, [fetchCreators, refreshKey, currentApi.url]); // Added currentApi.url dependency
+  }, [fetchCreators]); // Only depend on fetchCreators, which doesn't change
 
   return (
     <AppContainer>
@@ -249,15 +255,29 @@ function App() {
       <GlobalStyles />
       <ThemeToggle />
       <BrowserRouter basename={basePath}>
-        <Routes>
-          <Route path="/" element={<Navigate to="/coomer.su" replace />} />
-          <Route path="/:instance/*" element={<InstanceRouter />} />
-          <Route path="*" element={<Navigate to="/coomer.su" replace />} />
-        </Routes>
+        <NavigationProvider>
+          <AppContent />
+        </NavigationProvider>
       </BrowserRouter>
     </ThemeProvider>
   );
 }
+
+// Separate component to use the navigation context
+const AppContent = () => {
+  const { isNavigating } = useNavigation();
+
+  return (
+    <>
+      <LoadingBar isLoading={isNavigating} />
+      <Routes>
+        <Route path="/" element={<Navigate to="/coomer.su" replace />} />
+        <Route path="/:instance/*" element={<InstanceRouter />} />
+        <Route path="*" element={<Navigate to="/coomer.su" replace />} />
+      </Routes>
+    </>
+  );
+};
 
 // This component handles routing for a specific instance
 const InstanceRouter = () => {
@@ -268,7 +288,7 @@ const InstanceRouter = () => {
 
   useEffect(() => {
     const handleInstanceSelection = async () => {
-      const apiService = new ApiService();
+      // Use the existing singleton instance
       const availableInstances = apiService.getAvailableInstances();
       const defaultInstance = availableInstances.find(api => api.url === "coomer.su");
 
@@ -290,8 +310,8 @@ const InstanceRouter = () => {
         apiService.setCurrentApiInstance(foundInstance);
         setError(null);
 
-        // Trigger a refresh to ensure data is loaded for this instance
-        setRefreshTrigger(prev => prev + 1);
+        // No need to trigger a refresh - we'll rely on the HomePage component
+        // to fetch creators when it mounts
       } else {
         // Try to add it as a new instance and validate it
         try {
@@ -312,9 +332,6 @@ const InstanceRouter = () => {
             apiService.setCurrentApiInstance(newInstance);
             console.log(`Added and validated new instance from URL: ${newInstance.name}`);
             setError(null);
-
-            // Trigger a refresh to ensure data is loaded for this instance
-            setRefreshTrigger(prev => prev + 1);
           } else {
             // Instance is invalid, show error and fallback to default
             console.error(`Invalid instance ${instance}:`, validationResult.error);
@@ -325,9 +342,6 @@ const InstanceRouter = () => {
               apiService.setCurrentApiInstance(defaultInstance);
               // Update URL without triggering a new navigation
               window.history.replaceState(null, '', `/${defaultInstance.url}`);
-
-              // Trigger a refresh to ensure data is loaded for the default instance
-              setRefreshTrigger(prev => prev + 1);
             }
           }
         } catch (err) {
@@ -339,9 +353,6 @@ const InstanceRouter = () => {
             apiService.setCurrentApiInstance(defaultInstance);
             // Update URL without triggering a new navigation
             window.history.replaceState(null, '', `/${defaultInstance.url}`);
-
-            // Trigger a refresh to ensure data is loaded for the default instance
-            setRefreshTrigger(prev => prev + 1);
           } else {
             navigate("/", { replace: true });
           }
@@ -352,11 +363,7 @@ const InstanceRouter = () => {
     handleInstanceSelection();
   }, [instance, navigate]);
 
-  // Pass the refreshTrigger to HomePage
-  const HomePageWithRefresh = () => (
-    <HomePage key={`home-${refreshTrigger}-${instance}`} />
-  );
-
+  // Use the HomePage directly rather than with a refresh key
   return (
     <>
       {error && (
@@ -365,7 +372,7 @@ const InstanceRouter = () => {
         </ErrorContainer>
       )}
       <Routes>
-        <Route path="/" element={<HomePageWithRefresh />} />
+        <Route path="/" element={<HomePage />} />
         <Route path=":service/user/:id" element={<ProfilePage />} />
         <Route path=":service/user/:id/post/:postId" element={<PostPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

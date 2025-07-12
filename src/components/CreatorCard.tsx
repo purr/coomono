@@ -4,6 +4,7 @@ import styled from 'styled-components';
 import type { Creator } from '../types/creators';
 import { ApiService } from '../services/api';
 import { handleLinkInteraction } from '../utils/helpers';
+import { useNavigation } from '../context/NavigationContext';
 
 interface CreatorCardProps {
   creator: Creator;
@@ -140,6 +141,8 @@ const ServiceTag = styled.span`
 export const CreatorCard: React.FC<CreatorCardProps> = ({ creator }) => {
   const apiService = new ApiService();
   const navigate = useNavigate();
+  const { startNavigation } = useNavigation();
+
   const bannerUrl = apiService.getBannerUrl(creator.service, creator.id);
   const profileUrl = apiService.getProfilePictureUrl(creator.service, creator.id);
   const currentInstance = apiService.getCurrentApiInstance();
@@ -148,10 +151,12 @@ export const CreatorCard: React.FC<CreatorCardProps> = ({ creator }) => {
   const linkUrl = `/${currentInstance.url}/${creator.service}/user/${creator.id}`;
 
   const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    startNavigation();
     navigate(linkUrl);
   };
 
-  const linkProps = handleLinkInteraction(linkUrl, handleClick);
+  const linkProps = handleLinkInteraction(linkUrl, handleClick, startNavigation);
 
   return (
     <Card

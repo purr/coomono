@@ -85,14 +85,27 @@ export const debounce = <T extends (...args: any[]) => any>(
  *
  * @param url The URL to navigate to or copy
  * @param onClick Optional click handler
+ * @param startLoading Optional function to trigger loading state
  * @returns Event handler functions
  */
-export const handleLinkInteraction = (url: string, onClick?: (e: React.MouseEvent) => void) => {
+export const handleLinkInteraction = (
+    url: string,
+    onClick?: (e: React.MouseEvent) => void,
+    startLoading?: () => void
+) => {
     const handleClick = (e: React.MouseEvent) => {
         // Allow middle click to work naturally (browser handles opening in new tab)
         if (e.button === 1) return;
 
-        // For left click, call the onClick handler if provided
+        // For left click, always prevent the default navigation
+        e.preventDefault();
+
+        // For left click, start the loading state if provided
+        if (startLoading) {
+            startLoading();
+        }
+
+        // Call the onClick handler if provided
         if (onClick) onClick(e);
     };
 

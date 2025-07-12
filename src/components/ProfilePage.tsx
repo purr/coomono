@@ -8,6 +8,8 @@ import type { Preview, Attachment } from '../types/posts';
 import type { LegacyPost } from '../types/posts-legacy';
 import type { File as MediaTypeFile } from '../types/common';
 import { handleLinkInteraction } from '../utils/helpers';
+import BreadcrumbNavigation from './BreadcrumbNavigation';
+import { useNavigation } from '../context/NavigationContext';
 
 // Define a MediaFile type to replace the File interface
 interface MediaFile extends MediaTypeFile {
@@ -497,6 +499,7 @@ type MediaSortField = 'added' | 'size' | 'duration';
 const ProfilePage: React.FC = () => {
   const { service, id } = useParams<{ service: string; id: string }>();
   const navigate = useNavigate();
+  const { startNavigation, endNavigation } = useNavigation();
   const apiService = new ApiService();
 
   const [creator, setCreator] = useState<any>(null);
@@ -517,78 +520,74 @@ const ProfilePage: React.FC = () => {
   const postsPerPage = 20;
   const mediaPerPage = 30;
 
-  useEffect(() => {
-    const fetchCreatorData = async () => {
-      if (!service || !id) return;
+  const fetchCreatorData = async () => {
+    if (!service || !id) return;
 
-      setLoading(true);
-      try {
-        // Fetch creator profile
-        const creatorResponse = await apiService.getCreatorProfile(service, id);
+    setLoading(true);
+    try {
+      // Fetch creator profile
+      const creatorResponse = await apiService.getCreatorProfile(service, id);
 
-        // Try to get creator from the creator list to get favorited count
-        const creatorFromList = await apiService.getCreator(service, id);
+      // Try to get creator from the creator list to get favorited count
+      const creatorFromList = await apiService.getCreator(service, id);
 
-        if (creatorResponse.data) {
-          console.log('Creator profile data:', creatorResponse.data);
+      if (creatorResponse.data) {
+        console.log('Creator profile data:', creatorResponse.data);
 
-          // If we have a creator from the list with favorited count, use that value
-          const favorited = creatorFromList.data?.favorited || creatorResponse.data.favorited || 0;
+        // If we have a creator from the list with favorited count, use that value
+        const favorited = creatorFromList.data?.favorited || creatorResponse.data.favorited || 0;
 
-          // Create creator object with favorited count from either source
-          setCreator({
-            ...creatorResponse.data,
-            favorited
-          });
-        } else if (creatorResponse.error) {
-          console.error('Error fetching creator profile:', creatorResponse.error);
-          // Set a minimal creator object with default values
-          setCreator({
-            id: id,
-            name: id,
-            service: service,
-            favorited: creatorFromList.data?.favorited || 0,
-            updated: Math.floor(Date.now() / 1000)
-          });
-        }
-
-        // Fetch creator posts
-        const postsResponse = await apiService.getCreatorPosts(service, id);
-        if (postsResponse.data) {
-          setPosts(postsResponse.data);
-
-          // Extract all media files from posts
-          const allMedia: MediaFile[] = [];
-          postsResponse.data.forEach(post => {
-            const postFiles = getPostMediaFiles(post);
-            allMedia.push(...postFiles);
-          });
-
-          // Filter out any invalid media files
-          const validMedia = allMedia.filter(file => !!file && !!file.path);
-          console.log(`Found ${validMedia.length} valid media files out of ${allMedia.length} total`);
-
-          setMedia(validMedia);
-        } else if (postsResponse.error) {
-          console.error('Error fetching creator posts:', postsResponse.error);
-        }
-      } catch (error) {
-        console.error('Error fetching creator data:', error);
+        // Create creator object with favorited count from either source
+        setCreator({
+          ...creatorResponse.data,
+          favorited
+        });
+      } else if (creatorResponse.error) {
+        console.error('Error fetching creator profile:', creatorResponse.error);
         // Set a minimal creator object with default values
         setCreator({
           id: id,
           name: id,
           service: service,
-          favorited: 0,
+          favorited: creatorFromList.data?.favorited || 0,
           updated: Math.floor(Date.now() / 1000)
         });
-      } finally {
-        setLoading(false);
       }
-    };
 
-    fetchCreatorData();
-  }, [service, id]);
+      // Fetch creator posts
+      const postsResponse = await apiService.getCreatorPosts(service, id);
+      if (postsResponse.data) {
+        setPosts(postsResponse.data);
+
+        // Extract all media files from posts
+        const allMedia: MediaFile[] = [];
+        postsResponse.data.forEach(post => {
+          const postFiles = getPostMediaFiles(post);
+          allMedia.push(...postFiles);
+        });
+
+        // Filter out any invalid media files
+        const validMedia = allMedia.filter(file => !!file && !!file.path);
+        console.log(`Found ${validMedia.length} valid media files out of ${allMedia.length} total`);
+
+        setMedia(validMedia);
+      } else if (postsResponse.error) {
+        console.error('Error fetching creator posts:', postsResponse.error);
+      }
+    } catch (error) {
+      console.error('Error fetching creator data:', error);
+      // Set a minimal creator object with default values
+      setCreator({
+        id: id,
+        name: id,
+        service: service,
+        favorited: 0,
+        updated: Math.floor(Date.now() / 1000)
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const toggleExpandPost = (postId: string) => {
     setExpandedPosts(prev => ({
@@ -925,14 +924,32 @@ const ProfilePage: React.FC = () => {
 
   // Navigate to full post view
   const navigateToPost = (post: LegacyPost) => {
+    startNavigation();
     const currentInstance = apiService.getCurrentApiInstance();
     navigate(`/${currentInstance.url}/${service}/user/${id}/post/${post.id}`);
   };
 
+  const handlePostClick = (e: React.MouseEvent, post: LegacyPost) => {
+    e.preventDefault(); // This is critical to prevent the browser from following the href
+    navigateToPost(post);
+  };
+
+  // Load data when component mounts
+  useEffect(() => {
+    fetchCreatorData();
+    // Clean up navigation state when component unmounts
+    return () => {
+      endNavigation();
+    };
+  }, [service, id]);
+
   if (loading) {
     return (
       <ProfileContainer>
-        <p>Loading creator profile...</p>
+        <BreadcrumbNavigation />
+        <div style={{ padding: '2rem 0', textAlign: 'center' }}>
+          <p>Loading creator profile...</p>
+        </div>
       </ProfileContainer>
     );
   }
@@ -949,20 +966,9 @@ const ProfilePage: React.FC = () => {
 
   return (
     <ProfileContainer>
-      {/* Back button with right-click support */}
-      {(() => {
-        const homeUrl = `/${apiService.getCurrentApiInstance().url}`;
-        const handleBackClick = (e: React.MouseEvent) => {
-          navigate(homeUrl);
-        };
-        const backLinkProps = handleLinkInteraction(homeUrl, handleBackClick);
+      <BreadcrumbNavigation />
 
-        return (
-          <BackButton href={homeUrl} {...backLinkProps}>
-            ← Back to Creators
-          </BackButton>
-        );
-      })()}
+      {/* Back button removed as breadcrumb provides similar functionality */}
 
       <ProfileHeader>
         <BannerImage imageUrl={apiService.getBannerUrl(service!, id!)} />
@@ -1054,13 +1060,18 @@ const ProfilePage: React.FC = () => {
               displayedPosts.map(post => {
                 const postFiles = getPostMediaFiles(post);
                 const postUrl = `/${apiService.getCurrentApiInstance().url}/${service}/user/${id}/post/${post.id}`;
-                const linkProps = handleLinkInteraction(postUrl, () => navigateToPost(post));
+                const linkProps = handleLinkInteraction(
+                  postUrl,
+                  (e) => handlePostClick(e, post),
+                  startNavigation
+                );
 
                 return (
                   <PostCard
                     key={post.id}
                     href={postUrl}
                     {...linkProps}
+                    data-spa-navigation="post"
                   >
                     <PostHeader>
                       <PostTitle>{post.title || `Post from ${formatDate(post.published)}`}</PostTitle>

@@ -5,6 +5,8 @@ import { ApiService } from '../services/api';
 import type { Post, PostResponse, Attachment, Preview, Video, Props } from '../types/posts';
 import type { File as MediaTypeFile } from '../types/common';
 import { handleLinkInteraction } from '../utils/helpers';
+import BreadcrumbNavigation from './BreadcrumbNavigation';
+import { useNavigation } from '../context/NavigationContext';
 
 // Define a MediaFile type to replace the File interface
 interface MediaFile extends MediaTypeFile {
@@ -75,7 +77,9 @@ const PostMetaItem = styled.div`
   gap: 8px;
 `;
 
-const PostContent = styled.div`
+const PostContent = styled.div.attrs({
+  className: 'post-content'
+})`
   padding: 24px;
   line-height: 1.6;
 
@@ -244,6 +248,7 @@ const ImageViewer = styled.img`
 const PostPage: React.FC = () => {
   const { service, id, postId } = useParams<{ service: string; id: string; postId: string }>();
   const navigate = useNavigate();
+  const { startNavigation, endNavigation } = useNavigation();
   const apiService = new ApiService();
 
   const [post, setPost] = useState<Post | null>(null);
@@ -256,11 +261,43 @@ const PostPage: React.FC = () => {
   const [selectedMedia, setSelectedMedia] = useState<MediaFile | null>(null);
   const [currentMediaIndex, setCurrentMediaIndex] = useState<number>(-1);
 
+  // Fetch post data on component mount
   useEffect(() => {
     if (service && id && postId) {
       fetchPostData();
     }
+
+    // Clean up navigation state when component unmounts
+    return () => {
+      endNavigation();
+    };
   }, [service, id, postId]);
+
+  // Process post content to prevent full page reloads from links
+  useEffect(() => {
+    if (post?.content) {
+      // Wait for the content to be rendered
+      setTimeout(() => {
+        // Find all links in the post content
+        const contentLinks = document.querySelectorAll('.post-content a');
+
+        // Add event listeners to handle SPA navigation
+        contentLinks.forEach(link => {
+          link.addEventListener('click', (e) => {
+            const target = e.currentTarget as HTMLAnchorElement;
+            const href = target.getAttribute('href');
+
+            // Only handle internal links
+            if (href && !href.startsWith('http') && !href.startsWith('mailto:')) {
+              e.preventDefault();
+              startNavigation();
+              navigate(href);
+            }
+          });
+        });
+      }, 100);
+    }
+  }, [post, navigate, startNavigation]);
 
   const fetchPostData = async () => {
     if (!service || !id || !postId) return;
@@ -476,7 +513,10 @@ const PostPage: React.FC = () => {
   if (loading) {
     return (
       <PostPageContainer>
-        <p>Loading post...</p>
+        <BreadcrumbNavigation />
+        <div style={{ padding: '2rem 0', textAlign: 'center' }}>
+          <p>Loading post...</p>
+        </div>
       </PostPageContainer>
     );
   }
@@ -484,7 +524,10 @@ const PostPage: React.FC = () => {
   if (!post) {
     return (
       <PostPageContainer>
-        <p>Post not found</p>
+        <BreadcrumbNavigation />
+        <div style={{ padding: '2rem 0', textAlign: 'center' }}>
+          <p>Post not found</p>
+        </div>
       </PostPageContainer>
     );
   }
@@ -494,19 +537,18 @@ const PostPage: React.FC = () => {
 
   // Handle navigation with right-click support
   const handleBackClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    startNavigation();
     navigate(creatorProfileUrl);
   };
 
-  const backLinkProps = handleLinkInteraction(creatorProfileUrl, handleBackClick);
+  const backLinkProps = handleLinkInteraction(creatorProfileUrl, handleBackClick, startNavigation);
 
   return (
     <PostPageContainer>
-      <BackButton
-        href={creatorProfileUrl}
-        {...backLinkProps}
-      >
-        ← Back to Creator Profile
-      </BackButton>
+      <BreadcrumbNavigation />
+
+      {/* Back button removed as breadcrumb provides similar functionality */}
 
       <PostContainer>
         <PostHeader>
@@ -542,7 +584,10 @@ const PostPage: React.FC = () => {
                 .map((file, index) => (
                 <MediaCard
                   key={file.id}
-                  onClick={() => handleMediaClick(file, index)}
+                  onClick={(e) => {
+                    e.preventDefault(); // Prevent any default navigation
+                    handleMediaClick(file, index);
+                  }}
                 >
                   <MediaPreview imageUrl={file.path ? getThumbnailUrl(file) : undefined}>
                     {isVideo(file) && (

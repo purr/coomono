@@ -13,7 +13,7 @@ export class ApiService {
     private currentApiInstance!: ApiInstance;
     private availableInstances: ApiInstance[] = [];
 
-    // Cache for creators list
+    // Session-wide cache for creators list (preserved across the singleton)
     private static creatorsCache: {
         [domain: string]: {
             data: Creator[] | null;
@@ -22,8 +22,8 @@ export class ApiService {
         }
     } = {};
 
-    // Cache expiration time in milliseconds (1 hour)
-    private static CACHE_EXPIRATION = 60 * 60 * 1000;
+    // Cache expiration time in milliseconds (24 hours)
+    private static CACHE_EXPIRATION = 24 * 60 * 60 * 1000;
 
     constructor(apiInstance?: ApiInstance) {
         // Ensure singleton pattern - always return the existing instance
@@ -78,14 +78,9 @@ export class ApiService {
 
         console.log(`API instance set to: ${this.currentApiInstance.name} (${this.currentApiInstance.url})`);
 
-        // Clear the cache if the domain changed
-        if (newUrl !== oldUrl) {
-            console.log('Domain changed - clearing cached data');
-            // Make sure to delete the cache for the old URL
-            delete ApiService.creatorsCache[oldUrl];
-            // Also delete cache for the new URL to ensure fresh data
-            delete ApiService.creatorsCache[newUrl];
-        }
+        // Do NOT clear the cache when changing instances
+        // The cache will be maintained for the duration of the session
+        // unless explicitly cleared via clearCreatorsCache
     }
 
     /**
@@ -200,20 +195,47 @@ export class ApiService {
         const now = Date.now();
 
         // Check if we have a valid cache entry
-        if (
-            ApiService.creatorsCache[domain] &&
-            ApiService.creatorsCache[domain].timestamp > now - ApiService.CACHE_EXPIRATION
-        ) {
-            console.log('Using cached creators data');
-            if (ApiService.creatorsCache[domain].data) {
-                return { data: ApiService.creatorsCache[domain].data };
-            } else if (ApiService.creatorsCache[domain].error) {
-                return { error: ApiService.creatorsCache[domain].error };
+        if (ApiService.creatorsCache[domain] && ApiService.creatorsCache[domain].data) {
+            console.log(`Using cached creators data for ${domain} - cache is valid`);
+            return { data: ApiService.creatorsCache[domain].data };
+        }
+
+        // Check if we're already fetching data for this domain
+        if (ApiService.creatorsCache[domain] && ApiService.creatorsCache[domain].data === null) {
+            console.log(`Request for ${domain} already in progress, waiting...`);
+            // Wait for the request to complete (poll every 100ms for up to 10 seconds)
+            let attempts = 0;
+            const maxAttempts = 100; // 10 seconds
+
+            while (attempts < maxAttempts) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                attempts++;
+
+                if (ApiService.creatorsCache[domain] && ApiService.creatorsCache[domain].data) {
+                    console.log(`Concurrent request completed, using cached data for ${domain}`);
+                    return { data: ApiService.creatorsCache[domain].data };
+                }
+
+                if (ApiService.creatorsCache[domain] && ApiService.creatorsCache[domain].error) {
+                    console.log(`Concurrent request failed for ${domain}`);
+                    return { error: ApiService.creatorsCache[domain].error };
+                }
             }
+
+            // If we get here, something went wrong with the concurrent request
+            console.error(`Timed out waiting for concurrent request for ${domain}`);
         }
 
         try {
-            console.log('Fetching creators.txt from API');
+            console.log(`Fetching creators.txt from API for domain: ${domain}`);
+
+            // Create cache entry to indicate request in progress
+            ApiService.creatorsCache[domain] = {
+                data: null,
+                error: null,
+                timestamp: now
+            };
+
             const baseUrl = this.getApiBaseUrl();
             const url = `${baseUrl}${ApiPath.CREATORS}`;
 
@@ -232,9 +254,10 @@ export class ApiService {
                 timestamp: now
             };
 
+            console.log(`Successfully fetched and cached creators data for ${domain}`);
             return { data };
         } catch (error) {
-            console.error('Error fetching creators:', error);
+            console.error(`Error fetching creators for ${domain}:`, error);
 
             // Cache the error
             ApiService.creatorsCache[domain] = {
