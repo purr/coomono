@@ -1,23 +1,45 @@
-import { useEffect, useState, useCallback } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useParams, useNavigate } from 'react-router-dom';
-import styled from 'styled-components';
-import { ApiService } from './services/api';
-import { CreatorsModel } from './models/creators';
-import { ThemeProvider } from './theme/ThemeContext';
-import { GlobalStyles } from './theme/GlobalStyles';
-import { ThemeToggle } from './components/ThemeToggle';
-import { CreatorList } from './components/CreatorList';
-import ProfilePage from './components/ProfilePage';
-import PostPage from './components/PostPage';
-import BreadcrumbNavigation from './components/BreadcrumbNavigation';
-import LoadingBar from './components/LoadingBar';
-import { NavigationProvider, useNavigation } from './context/NavigationContext';
-import type { Creator } from './types/creators';
-import type { ApiInstance } from './types/common';
+import { useEffect, useState, useCallback } from "react";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useParams,
+  useNavigate,
+  Outlet,
+} from "react-router-dom";
+import styled from "styled-components";
+import { ApiService } from "./services/api";
+import { CreatorsModel } from "./models/creators";
+import { ThemeProvider } from "./theme/ThemeContext";
+import { GlobalStyles } from "./theme/GlobalStyles";
+import { ThemeToggle } from "./components/ThemeToggle";
+import { CreatorList } from "./components/CreatorList";
+import ProfilePage from "./components/ProfilePage";
+import PostPage from "./components/PostPage";
+import BreadcrumbNavigation from "./components/BreadcrumbNavigation";
+import CreatorHeader from "./components/CreatorHeader";
+import LoadingBar from "./components/LoadingBar";
+import { NavigationProvider, useNavigation } from "./context/NavigationContext";
+import { CreatorProvider } from "./context/CreatorContext";
+import type { Creator } from "./types/creators";
+import type { ApiInstance } from "./types/common";
 
 const AppContainer = styled.div`
   min-height: 100vh;
   padding: 2rem 0;
+`;
+
+const HomeContainer = styled.div`
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 16px 32px;
+`;
+
+const CreatorLayoutContainer = styled.div`
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 16px 32px;
 `;
 
 const Header = styled.header`
@@ -88,13 +110,38 @@ const RefreshButton = styled(Button)``;
 const apiService = new ApiService();
 const creatorsModel = new CreatorsModel();
 
+// Global function to ensure creators are loaded - can be called from any component
+export const ensureCreatorsLoaded = async (): Promise<boolean> => {
+  if (creatorsModel.getCreators().length > 0) {
+    console.log("Using existing creators data from model");
+    return true;
+  }
+
+  try {
+    console.log("Fetching creators.txt to populate model");
+    const response = await apiService.getAllCreators();
+    if (response.data) {
+      creatorsModel.setCreators(response.data);
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.error("Failed to fetch creators", err);
+    return false;
+  }
+};
+
 const HomePage = () => {
   // State variables
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [creators, setCreators] = useState<Creator[]>([]);
-  const [currentApi, setCurrentApi] = useState<ApiInstance>(apiService.getCurrentApiInstance());
-  const [apiInstances, setApiInstances] = useState<ApiInstance[]>(apiService.getAvailableInstances());
+  const [currentApi, setCurrentApi] = useState<ApiInstance>(
+    apiService.getCurrentApiInstance()
+  );
+  const [apiInstances, setApiInstances] = useState<ApiInstance[]>(
+    apiService.getAvailableInstances()
+  );
   const [refreshKey, setRefreshKey] = useState<number>(0); // Used only for manual refresh
   const navigate = useNavigate();
   const { instance } = useParams<{ instance?: string }>();
@@ -105,24 +152,19 @@ const HomePage = () => {
       setLoading(true);
       setError(null);
 
-      console.log('Fetching creators with current API instance:', apiService.getCurrentApiInstance());
-      const response = await apiService.getAllCreators();
+      // Use the common function to ensure creators are loaded
+      await ensureCreatorsLoaded();
 
-      if (response.error) {
-        setError(response.error);
-      } else if (response.data) {
-        // Process the data and store in model
-        const creatorData = response.data;
-        creatorsModel.setCreators(creatorData);
-        setCreators(creatorData);
+      // Get the creators from the model (which was just populated if needed)
+      const creatorData = creatorsModel.getCreators();
+      setCreators(creatorData);
 
-        // Log available data for debugging and future feature development
-        if (creatorData.length > 0) {
-          console.log('Sample creator data structure:', creatorData[0]);
-        }
+      // Log available data for debugging and future feature development
+      if (creatorData.length > 0) {
+        console.log("Sample creator data structure:", creatorData[0]);
       }
     } catch (err) {
-      setError('Failed to fetch creators');
+      setError("Failed to fetch creators");
       console.error(err);
     } finally {
       setLoading(false);
@@ -132,9 +174,12 @@ const HomePage = () => {
   // Update current API if instance param changes
   useEffect(() => {
     if (instance && instance !== currentApi.url) {
-      const matchingInstance = apiInstances.find(api => api.url === instance);
+      const matchingInstance = apiInstances.find((api) => api.url === instance);
       if (matchingInstance) {
-        console.log('Instance changed in URL, updating API instance:', matchingInstance);
+        console.log(
+          "Instance changed in URL, updating API instance:",
+          matchingInstance
+        );
         apiService.setCurrentApiInstance(matchingInstance);
         setCurrentApi(matchingInstance);
 
@@ -146,10 +191,10 @@ const HomePage = () => {
 
   const handleApiChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const selectedApiUrl = e.target.value;
-    const selectedApi = apiInstances.find(api => api.url === selectedApiUrl);
+    const selectedApi = apiInstances.find((api) => api.url === selectedApiUrl);
 
     if (selectedApi) {
-      console.log('Changing API to:', selectedApi);
+      console.log("Changing API to:", selectedApi);
       apiService.setCurrentApiInstance(selectedApi);
       setCurrentApi(selectedApi);
 
@@ -166,13 +211,13 @@ const HomePage = () => {
     if (url) {
       try {
         // Add https:// if not present
-        const fullUrl = url.startsWith('http') ? url : `https://${url}`;
+        const fullUrl = url.startsWith("http") ? url : `https://${url}`;
         const newUrl = new URL(fullUrl);
 
         const apiInstance: ApiInstance = {
           name: newUrl.hostname,
           url: newUrl.hostname,
-          isDefault: false
+          isDefault: false,
         };
 
         apiService.addApiInstance(apiInstance);
@@ -208,25 +253,21 @@ const HomePage = () => {
   }, [fetchCreators]); // Only depend on fetchCreators, which doesn't change
 
   return (
-    <AppContainer>
+    <HomeContainer>
+      <BreadcrumbNavigation />
       <Header>
         <Title>Coomono</Title>
         <Subtitle>An alternative frontend for kemono-style APIs</Subtitle>
 
         <ApiSelectorContainer>
-          <ApiSelector
-            value={currentApi.url}
-            onChange={handleApiChange}
-          >
+          <ApiSelector value={currentApi.url} onChange={handleApiChange}>
             {apiInstances.map((api, index) => (
               <option key={index} value={api.url}>
                 {api.name} ({api.url})
               </option>
             ))}
           </ApiSelector>
-          <RefreshButton onClick={handleRefresh}>
-            Refresh
-          </RefreshButton>
+          <RefreshButton onClick={handleRefresh}>Refresh</RefreshButton>
           <AddApiButton onClick={handleAddCustomApi}>
             Add Custom API
           </AddApiButton>
@@ -241,14 +282,14 @@ const HomePage = () => {
           <CreatorList creators={creators} isLoading={loading} />
         )}
       </Main>
-    </AppContainer>
+    </HomeContainer>
   );
 };
 
 // Main App component with routing
 function App() {
   // Get the base path for the app (useful for GitHub Pages deployment)
-  const basePath = import.meta.env.BASE_URL || '/';
+  const basePath = import.meta.env.BASE_URL || "/";
 
   return (
     <ThemeProvider>
@@ -290,7 +331,9 @@ const InstanceRouter = () => {
     const handleInstanceSelection = async () => {
       // Use the existing singleton instance
       const availableInstances = apiService.getAvailableInstances();
-      const defaultInstance = availableInstances.find(api => api.url === "coomer.su");
+      const defaultInstance = availableInstances.find(
+        (api) => api.url === "coomer.su"
+      );
 
       // If no instance specified, redirect to default
       if (!instance) {
@@ -302,7 +345,9 @@ const InstanceRouter = () => {
       }
 
       // Try to find the instance by URL
-      const foundInstance = availableInstances.find(api => api.url === instance);
+      const foundInstance = availableInstances.find(
+        (api) => api.url === instance
+      );
 
       if (foundInstance) {
         // Set this as the current instance
@@ -310,49 +355,69 @@ const InstanceRouter = () => {
         apiService.setCurrentApiInstance(foundInstance);
         setError(null);
 
-        // No need to trigger a refresh - we'll rely on the HomePage component
-        // to fetch creators when it mounts
+        // Ensure creators are loaded on instance change
+        await ensureCreatorsLoaded();
       } else {
         // Try to add it as a new instance and validate it
         try {
           const newInstance = {
             name: instance,
             url: instance,
-            isDefault: false
+            isDefault: false,
           };
 
           // Add the new instance
           apiService.addApiInstance(newInstance);
 
           // Validate the instance
-          const validationResult = await apiService.validateApiInstance(newInstance);
+          const validationResult = await apiService.validateApiInstance(
+            newInstance
+          );
 
           if (validationResult.isValid) {
             // Instance is valid, set it as current
             apiService.setCurrentApiInstance(newInstance);
-            console.log(`Added and validated new instance from URL: ${newInstance.name}`);
+            console.log(
+              `Added and validated new instance from URL: ${newInstance.name}`
+            );
             setError(null);
+
+            // Ensure creators are loaded for the new instance
+            await ensureCreatorsLoaded();
           } else {
             // Instance is invalid, show error and fallback to default
-            console.error(`Invalid instance ${instance}:`, validationResult.error);
-            setError(`The instance "${instance}" appears to be invalid. Falling back to default.`);
+            console.error(
+              `Invalid instance ${instance}:`,
+              validationResult.error
+            );
+            setError(
+              `The instance "${instance}" appears to be invalid. Falling back to default.`
+            );
 
             // Fallback to default instance (coomer.su)
             if (defaultInstance) {
               apiService.setCurrentApiInstance(defaultInstance);
               // Update URL without triggering a new navigation
-              window.history.replaceState(null, '', `/${defaultInstance.url}`);
+              window.history.replaceState(null, "", `/${defaultInstance.url}`);
+
+              // Ensure creators are loaded for the default instance
+              await ensureCreatorsLoaded();
             }
           }
         } catch (err) {
           console.error("Invalid instance in URL:", err);
-          setError(`The instance "${instance}" appears to be invalid. Falling back to default.`);
+          setError(
+            `The instance "${instance}" appears to be invalid. Falling back to default.`
+          );
 
           // Fallback to default instance (coomer.su)
           if (defaultInstance) {
             apiService.setCurrentApiInstance(defaultInstance);
             // Update URL without triggering a new navigation
-            window.history.replaceState(null, '', `/${defaultInstance.url}`);
+            window.history.replaceState(null, "", `/${defaultInstance.url}`);
+
+            // Ensure creators are loaded for the default instance
+            await ensureCreatorsLoaded();
           } else {
             navigate("/", { replace: true });
           }
@@ -363,7 +428,24 @@ const InstanceRouter = () => {
     handleInstanceSelection();
   }, [instance, navigate]);
 
-  // Use the HomePage directly rather than with a refresh key
+  // Create a layout component for creator pages
+  const CreatorLayout = () => {
+    // Pre-load creators to ensure they're available for CreatorProvider
+    useEffect(() => {
+      ensureCreatorsLoaded();
+    }, []);
+
+    return (
+      <CreatorLayoutContainer>
+        <CreatorProvider creatorsModel={creatorsModel}>
+          <BreadcrumbNavigation />
+          <CreatorHeader />
+          <Outlet />
+        </CreatorProvider>
+      </CreatorLayoutContainer>
+    );
+  };
+
   return (
     <>
       {error && (
@@ -373,8 +455,10 @@ const InstanceRouter = () => {
       )}
       <Routes>
         <Route path="/" element={<HomePage />} />
-        <Route path=":service/user/:id" element={<ProfilePage />} />
-        <Route path=":service/user/:id/post/:postId" element={<PostPage />} />
+        <Route element={<CreatorLayout />}>
+          <Route path=":service/user/:id" element={<ProfilePage />} />
+          <Route path=":service/user/:id/post/:postId" element={<PostPage />} />
+        </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>

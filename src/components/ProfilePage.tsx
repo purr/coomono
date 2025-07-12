@@ -1,15 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
-import styled from 'styled-components';
-import { ApiService } from '../services/api';
-import type { CreatorProfile } from '../types/profile';
-import type { Post as ApiPost } from '../types/posts';
-import type { Preview, Attachment } from '../types/posts';
-import type { LegacyPost } from '../types/posts-legacy';
-import type { File as MediaTypeFile } from '../types/common';
-import { handleLinkInteraction } from '../utils/helpers';
-import BreadcrumbNavigation from './BreadcrumbNavigation';
-import { useNavigation } from '../context/NavigationContext';
+import React, { useState, useEffect, useCallback } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import styled from "styled-components";
+import { ApiService } from "../services/api";
+import type { LegacyPost } from "../types/posts-legacy";
+import type { File as MediaTypeFile } from "../types/common";
+import { handleLinkInteraction } from "../utils/helpers";
+import { useNavigation } from "../context/NavigationContext";
+import { useCreator } from "../context/CreatorContext";
 
 // Define a MediaFile type to replace the File interface
 interface MediaFile extends MediaTypeFile {
@@ -22,6 +19,10 @@ const ProfileContainer = styled.div`
   max-width: 1200px;
   margin: 0 auto;
   padding: 0 16px 32px;
+`;
+
+const ContentContainer = styled.div`
+  width: 100%;
 `;
 
 const BackButton = styled.a`
@@ -48,103 +49,6 @@ const BackButton = styled.a`
   }
 `;
 
-const ProfileHeader = styled.div`
-  position: relative;
-  border-radius: 12px;
-  overflow: hidden;
-  margin-bottom: 24px;
-`;
-
-const BannerImage = styled.div<{ imageUrl?: string }>`
-  width: 100%;
-  height: 240px;
-  background-image: url(${props => props.imageUrl || 'none'});
-  background-size: cover;
-  background-position: center;
-  position: relative;
-
-  &::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    height: 50%;
-    background: linear-gradient(to top, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0));
-  }
-`;
-
-const ProfileInfo = styled.div`
-  position: relative;
-  margin-top: -80px;
-  padding: 0 24px;
-  display: flex;
-  flex-direction: column;
-
-  @media (min-width: 768px) {
-    flex-direction: row;
-    align-items: flex-end;
-    gap: 24px;
-  }
-`;
-
-const ProfilePicture = styled.div<{ imageUrl?: string }>`
-  width: 160px;
-  height: 160px;
-  border-radius: 50%;
-  border: 4px solid ${({ theme }) => theme.rose};
-  background-image: url(${props => props.imageUrl || 'none'});
-  background-size: cover;
-  background-position: center;
-  margin-bottom: 16px;
-  z-index: 2;
-`;
-
-const ProfileDetails = styled.div`
-  flex: 1;
-`;
-
-const CreatorName = styled.h1`
-  font-size: 2.5rem;
-  margin: 0;
-  margin-bottom: 8px;
-`;
-
-const StatsRow = styled.div`
-  display: flex;
-  gap: 24px;
-  margin-bottom: 16px;
-`;
-
-const Stat = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: ${({ theme }) => theme.subtle};
-`;
-
-const LinkedAccounts = styled.div`
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 8px;
-`;
-
-const SocialLink = styled.a`
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: 4px;
-  background: ${({ theme }) => theme.overlay};
-  color: ${({ theme }) => theme.text};
-  text-decoration: none;
-
-  &:hover {
-    background: ${({ theme }) => theme.highlightMed};
-  }
-`;
-
 const TabsContainer = styled.div`
   display: flex;
   justify-content: center; /* Center the tabs */
@@ -157,20 +61,20 @@ const Tab = styled.button<{ active?: boolean }>`
   padding: 12px 24px;
   background: none;
   border: none;
-  color: ${({ theme, active }) => active ? theme.text : theme.subtle};
+  color: ${({ theme, active }) => (active ? theme.text : theme.subtle)};
   font-size: 1.1rem;
-  font-weight: ${({ active }) => active ? '600' : '400'};
+  font-weight: ${({ active }) => (active ? "600" : "400")};
   cursor: pointer;
   position: relative;
 
   &::after {
-    content: '';
+    content: "";
     position: absolute;
     bottom: -1px;
     left: 0;
     width: 100%;
     height: 2px;
-    background: ${({ theme, active }) => active ? theme.rose : 'transparent'};
+    background: ${({ theme, active }) => (active ? theme.rose : "transparent")};
   }
 
   &:hover {
@@ -204,7 +108,7 @@ const SortDirectionSelect = styled(Select)`
   min-width: 60px;
 
   & option {
-    font-family: 'Arial', sans-serif;
+    font-family: "Arial", sans-serif;
   }
 `;
 
@@ -222,12 +126,14 @@ const PageButton = styled.button<{ active?: boolean }>`
   align-items: center;
   justify-content: center;
   border-radius: 4px;
-  background: ${({ theme, active }) => active ? theme.rose : theme.overlay};
-  color: ${({ theme, active }) => active ? theme.base : theme.text};
-  border: 1px solid ${({ theme, active }) => active ? theme.rose : theme.highlightMed};
+  background: ${({ theme, active }) => (active ? theme.rose : theme.overlay)};
+  color: ${({ theme, active }) => (active ? theme.base : theme.text)};
+  border: 1px solid
+    ${({ theme, active }) => (active ? theme.rose : theme.highlightMed)};
 
   &:hover {
-    background: ${({ theme, active }) => active ? theme.rose : theme.highlightMed};
+    background: ${({ theme, active }) =>
+    active ? theme.rose : theme.highlightMed};
   }
 `;
 
@@ -284,18 +190,27 @@ const PostDate = styled.span`
 
 const PostContent = styled.div<{ expanded: boolean }>`
   padding: 16px;
-  max-height: ${props => props.expanded ? 'none' : '200px'};
+  max-height: ${(props) => (props.expanded ? "none" : "200px")};
   overflow: hidden;
   position: relative;
 
+  img {
+    max-width: 100%;
+    height: auto;
+    cursor: pointer;
+  }
+
   &::after {
-    content: '';
+    content: "";
     position: absolute;
     bottom: 0;
     left: 0;
     width: 100%;
-    height: ${props => props.expanded ? '0' : '80px'};
-    background: ${props => props.expanded ? 'none' : 'linear-gradient(to top, var(--surface), transparent)'};
+    height: ${(props) => (props.expanded ? "0" : "80px")};
+    background: ${(props) =>
+    props.expanded
+      ? "none"
+      : "linear-gradient(to top, var(--surface), transparent)"};
     pointer-events: none;
   }
 `;
@@ -321,19 +236,29 @@ const PostMedia = styled.div`
   padding: 0 16px 16px;
 `;
 
-const MediaThumbnail = styled.div<{ imageUrl?: string }>`
+// Update MediaThumbnail to handle videos
+const MediaThumbnail = styled.div<{ imageUrl?: string; isVideo?: boolean }>`
   width: 120px;
   height: 120px;
   border-radius: 4px;
-  background-image: url(${props => props.imageUrl || 'none'});
+  background-image: ${(props) =>
+    props.isVideo ? "none" : `url(${props.imageUrl || "none"})`};
   background-size: cover;
   background-position: center;
   cursor: pointer;
   position: relative;
+  overflow: hidden;
 
   &:hover {
     opacity: 0.9;
   }
+`;
+
+const VideoThumbnail = styled.video`
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
 `;
 
 const VideoIndicator = styled.div`
@@ -366,23 +291,37 @@ const MediaCard = styled.div`
   }
 `;
 
-const MediaPreview = styled.div<{ imageUrl?: string }>`
+// Update MediaPreview for the media grid
+const MediaPreview = styled.div<{ imageUrl?: string; isVideo?: boolean }>`
   width: 100%;
   height: 180px;
-  background-image: url(${props => props.imageUrl || 'none'});
-  background-color: ${props => !props.imageUrl ? ({ theme }) => theme.overlay : 'transparent'};
+  background-image: ${(props) =>
+    props.isVideo ? "none" : `url(${props.imageUrl || "none"})`};
+  background-color: ${(props) =>
+    !props.imageUrl && !props.isVideo
+      ? ({ theme }) => theme.overlay
+      : "transparent"};
   background-size: cover;
   background-position: center;
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
 
   &::before {
-    content: ${props => !props.imageUrl ? "'No Preview'" : "none"};
+    content: ${(props) =>
+    !props.imageUrl && !props.isVideo ? "'No Preview'" : "none"};
     color: ${({ theme }) => theme.subtle};
     font-size: 0.9rem;
   }
+`;
+
+const VideoPreview = styled.video`
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
 `;
 
 const MediaInfo = styled.div`
@@ -397,6 +336,7 @@ const MediaTitle = styled.h4`
   text-overflow: ellipsis;
 `;
 
+// Update MediaMeta to show duration for videos
 const MediaMeta = styled.div`
   display: flex;
   justify-content: space-between;
@@ -421,9 +361,49 @@ const MediaViewerOverlay = styled.div`
 `;
 
 const MediaViewerContent = styled.div`
-  max-width: 90%;
-  max-height: 80%;
+  width: 80%;
+  height: 80vh;
   position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+`;
+
+const NavigationButton = styled.button`
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 24px;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+
+  &:hover {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.3);
+  }
+
+  &:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+`;
+
+const PrevButton = styled(NavigationButton)`
+  left: -70px;
+`;
+
+const NextButton = styled(NavigationButton)`
+  right: -70px;
 `;
 
 const MediaViewerControls = styled.div`
@@ -472,190 +452,320 @@ const CloseButton = styled.button`
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  z-index: 1100;
 
   &:hover {
     background: rgba(255, 255, 255, 0.3);
   }
 `;
 
+const MediaContainer = styled.div`
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+`;
+
 const VideoPlayer = styled.video`
   max-width: 100%;
-  max-height: 80vh;
+  max-height: 100%;
+  object-fit: contain;
 `;
 
 const ImageViewer = styled.img`
   max-width: 100%;
-  max-height: 80vh;
+  max-height: 100%;
   object-fit: contain;
 `;
 
+// Define interface and types
 interface ExpandedPostState {
   [key: string]: boolean;
 }
 
-type PostSortField = 'published' | 'title';
-type MediaSortField = 'added' | 'size' | 'duration';
+type PostSortField = "published" | "title";
+type MediaSortField = "added" | "duration";
 
 const ProfilePage: React.FC = () => {
-  const { service, id } = useParams<{ service: string; id: string }>();
+  const { service, id } = useParams<{ service?: string; id?: string }>();
   const navigate = useNavigate();
   const { startNavigation, endNavigation } = useNavigation();
+  const { creator } = useCreator();
   const apiService = new ApiService();
 
-  const [creator, setCreator] = useState<any>(null);
   const [posts, setPosts] = useState<LegacyPost[]>([]);
   const [media, setMedia] = useState<MediaFile[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [activeTab, setActiveTab] = useState<'posts' | 'media'>('posts');
-  const [postSortBy, setPostSortBy] = useState<PostSortField>('published');
-  const [postSortDirection, setPostSortDirection] = useState<'asc' | 'desc'>('desc');
-  const [mediaSortBy, setMediaSortBy] = useState<MediaSortField>('added');
-  const [mediaSortDirection, setMediaSortDirection] = useState<'asc' | 'desc'>('desc');
-  const [mediaFilter, setMediaFilter] = useState<string>('');
+  const [activeTab, setActiveTab] = useState<"posts" | "media">("posts");
   const [expandedPosts, setExpandedPosts] = useState<ExpandedPostState>({});
-  const [selectedMedia, setSelectedMedia] = useState<MediaFile | null>(null);
-  const [currentMediaIndex, setCurrentMediaIndex] = useState<number>(-1);
   const [postsPage, setPostsPage] = useState<number>(1);
   const [mediaPage, setMediaPage] = useState<number>(1);
-  const postsPerPage = 20;
-  const mediaPerPage = 30;
+  const [postSortBy, setPostSortBy] = useState<PostSortField>("published");
+  const [postSortDirection, setPostSortDirection] = useState<"asc" | "desc">(
+    "desc"
+  );
+  const [mediaSortBy, setMediaSortBy] = useState<MediaSortField>("added");
+  const [mediaSortDirection, setMediaSortDirection] = useState<"asc" | "desc">(
+    "desc"
+  );
+  const [mediaType, setMediaType] = useState<string>("all");
+  const [selectedMedia, setSelectedMedia] = useState<MediaFile | null>(null);
+  const [currentMediaIndex, setCurrentMediaIndex] = useState<number>(-1);
 
+  // Add a state to store dynamically loaded video durations
+  const [videoDurations, setVideoDurations] = useState<Record<string, number>>(
+    {}
+  );
+
+  const postsPerPage = 10;
+  const mediaPerPage = 24;
+
+  // Define closeMediaViewer early
+  const closeMediaViewer = useCallback(() => {
+    setSelectedMedia(null);
+    setCurrentMediaIndex(-1);
+  }, []);
+
+  // Add keyboard event handler
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && selectedMedia) {
+        closeMediaViewer();
+      }
+    };
+
+    // Add event listener when media is selected
+    if (selectedMedia) {
+      window.addEventListener("keydown", handleKeyDown);
+    }
+
+    // Clean up event listener when component unmounts or media is closed
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [selectedMedia, closeMediaViewer]);
+
+  // Fetch creator data on component mount
+  useEffect(() => {
+    if (service && id) {
+      fetchCreatorData();
+    }
+
+    // Clean up navigation state when component unmounts
+    return () => {
+      endNavigation();
+    };
+  }, [service, id]);
+
+  // Add event listeners to post content images
+  useEffect(() => {
+    // Process post content to handle image clicks
+    const processPostContent = () => {
+      // Find all posts with content
+      const postContents = document.querySelectorAll(".post-content img");
+
+      // Add event listeners to handle image clicks
+      postContents.forEach((img) => {
+        img.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+
+          const clickedImg = e.currentTarget as HTMLImageElement;
+          const src = clickedImg.getAttribute("src");
+
+          if (src) {
+            // Create a virtual media file for the clicked image
+            const contentImageFile: MediaFile = {
+              id: `content-image-${Date.now()}`,
+              name: clickedImg.getAttribute("alt") || "Content image",
+              path: src,
+              server: "",
+              type: "thumbnail",
+            };
+
+            // Open the image in the media viewer
+            handleMediaClick(contentImageFile, -1);
+          }
+        });
+      });
+    };
+
+    // Process post content after a short delay to ensure it's rendered
+    if (!loading) {
+      setTimeout(processPostContent, 300);
+    }
+
+    return () => {
+      // No cleanup needed as the elements will be removed from DOM
+    };
+  }, [loading, posts]);
+
+  // Function to fetch creator data
   const fetchCreatorData = async () => {
     if (!service || !id) return;
 
     setLoading(true);
+
     try {
-      // Fetch creator profile
-      const creatorResponse = await apiService.getCreatorProfile(service, id);
-
-      // Try to get creator from the creator list to get favorited count
-      const creatorFromList = await apiService.getCreator(service, id);
-
-      if (creatorResponse.data) {
-        console.log('Creator profile data:', creatorResponse.data);
-
-        // If we have a creator from the list with favorited count, use that value
-        const favorited = creatorFromList.data?.favorited || creatorResponse.data.favorited || 0;
-
-        // Create creator object with favorited count from either source
-        setCreator({
-          ...creatorResponse.data,
-          favorited
-        });
-      } else if (creatorResponse.error) {
-        console.error('Error fetching creator profile:', creatorResponse.error);
-        // Set a minimal creator object with default values
-        setCreator({
-          id: id,
-          name: id,
-          service: service,
-          favorited: creatorFromList.data?.favorited || 0,
-          updated: Math.floor(Date.now() / 1000)
-        });
-      }
-
       // Fetch creator posts
       const postsResponse = await apiService.getCreatorPosts(service, id);
+
       if (postsResponse.data) {
         setPosts(postsResponse.data);
 
-        // Extract all media files from posts
+        // Process media files from posts
         const allMedia: MediaFile[] = [];
-        postsResponse.data.forEach(post => {
-          const postFiles = getPostMediaFiles(post);
-          allMedia.push(...postFiles);
+        postsResponse.data.forEach((post) => {
+          const postMedia = getPostMediaFiles(post);
+          allMedia.push(...postMedia);
         });
 
-        // Filter out any invalid media files
-        const validMedia = allMedia.filter(file => !!file && !!file.path);
-        console.log(`Found ${validMedia.length} valid media files out of ${allMedia.length} total`);
-
-        setMedia(validMedia);
-      } else if (postsResponse.error) {
-        console.error('Error fetching creator posts:', postsResponse.error);
+        setMedia(allMedia);
       }
     } catch (error) {
-      console.error('Error fetching creator data:', error);
-      // Set a minimal creator object with default values
-      setCreator({
-        id: id,
-        name: id,
-        service: service,
-        favorited: 0,
-        updated: Math.floor(Date.now() / 1000)
-      });
+      console.error("Error fetching creator data:", error);
     } finally {
       setLoading(false);
     }
   };
 
   const toggleExpandPost = (postId: string) => {
-    setExpandedPosts(prev => ({
+    setExpandedPosts((prev) => ({
       ...prev,
-      [postId]: !prev[postId]
+      [postId]: !prev[postId],
     }));
   };
 
-  const handleMediaClick = (file: MediaFile, index: number) => {
+  const handleMediaClick = (
+    file: MediaFile,
+    index: number,
+    e?: React.MouseEvent
+  ) => {
+    // If an event was passed, prevent default behavior
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
     setSelectedMedia(file);
     setCurrentMediaIndex(index);
   };
 
-  const closeMediaViewer = () => {
-    setSelectedMedia(null);
-    setCurrentMediaIndex(-1);
-  };
-
-  const navigateMedia = (direction: 'next' | 'prev') => {
+  const navigateMedia = (direction: "next" | "prev") => {
     if (currentMediaIndex === -1) return;
 
     const filteredMediaList = getFilteredMedia(); // Use a local variable to avoid re-calculating
-    const newIndex = direction === 'next'
-      ? (currentMediaIndex + 1) % filteredMediaList.length
-      : (currentMediaIndex - 1 + filteredMediaList.length) % filteredMediaList.length;
+    const newIndex =
+      direction === "next"
+        ? (currentMediaIndex + 1) % filteredMediaList.length
+        : (currentMediaIndex - 1 + filteredMediaList.length) %
+        filteredMediaList.length;
 
     setSelectedMedia(filteredMediaList[newIndex]);
     setCurrentMediaIndex(newIndex);
   };
 
   const skipVideo = (seconds: number) => {
-    const videoElement = document.getElementById('media-viewer-video') as HTMLVideoElement;
+    const videoElement = document.getElementById(
+      "media-viewer-video"
+    ) as HTMLVideoElement;
     if (videoElement) {
       videoElement.currentTime += seconds;
     }
   };
 
   const formatDate = (dateString: string | undefined) => {
-    if (!dateString) return 'Unknown date';
+    if (!dateString) return "Unknown date";
 
     try {
       const date = new Date(dateString);
       if (isNaN(date.getTime())) {
-        return 'Unknown date';
+        return "Unknown date";
       }
-      return date.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
+      return date.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
       });
     } catch (error) {
-      console.error('Error formatting date:', error);
-      return 'Invalid date';
+      console.error("Error formatting date:", error);
+      return "Invalid date";
     }
   };
 
   const formatTimestamp = (timestamp: number) => {
-    return new Date(timestamp * 1000).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
+    return new Date(timestamp * 1000).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
     });
   };
 
-  const formatDuration = (seconds: number) => {
+  // Update formatDuration to handle null case
+  const formatDuration = (seconds: number | null) => {
+    if (seconds === null) return "Loading...";
+
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = Math.floor(seconds % 60);
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+    return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
+  };
+
+  // Helper function to determine if a file is a video based on path
+  const isVideoPath = (path: string) => {
+    return !!path.match(/\.(mp4|webm|mov|avi|wmv)$/i);
+  };
+
+  // Define isVideo function before it's used
+  const isVideo = (file: MediaFile) => {
+    if (!file) return false;
+
+    // First check the name
+    if (file.name && file.name.match(/\.(mp4|webm|mov|avi|wmv)$/i)) {
+      return true;
+    }
+
+    // Fallback to checking the path
+    if (file.path && file.path.match(/\.(mp4|webm|mov|avi|wmv)$/i)) {
+      return true;
+    }
+
+    // If we have a type field, check that as well
+    if (file.type === "video") {
+      return true;
+    }
+
+    return false;
+  };
+
+  // Function to handle video metadata loaded event
+  const handleVideoMetadataLoaded = (
+    file: MediaFile,
+    e: React.SyntheticEvent<HTMLVideoElement>
+  ) => {
+    const video = e.currentTarget;
+    if (video && video.duration && video.duration !== Infinity) {
+      setVideoDurations((prev) => ({
+        ...prev,
+        [file.id]: video.duration,
+      }));
+    }
+  };
+
+  // Function to get video duration (either from file metadata or dynamically loaded)
+  const getVideoDuration = (file: MediaFile) => {
+    // First check if we have a dynamically loaded duration
+    if (videoDurations[file.id]) {
+      return videoDurations[file.id];
+    }
+
+    // Then check if the file has a duration property
+    if (file.duration) {
+      return file.duration;
+    }
+
+    // Otherwise return null
+    return null;
   };
 
   // Get sorted and paginated posts
@@ -668,14 +778,14 @@ const ProfilePage: React.FC = () => {
         return isNaN(date.getTime()) ? 0 : date.getTime();
       };
 
-      if (postSortBy === 'published') {
+      if (postSortBy === "published") {
         const dateA = getDate(a.published);
         const dateB = getDate(b.published);
-        return postSortDirection === 'asc' ? dateA - dateB : dateB - dateA;
-      } else if (postSortBy === 'title') {
-        const titleA = a.title || '';
-        const titleB = b.title || '';
-        return postSortDirection === 'asc'
+        return postSortDirection === "asc" ? dateA - dateB : dateB - dateA;
+      } else if (postSortBy === "title") {
+        const titleA = a.title || "";
+        const titleB = b.title || "";
+        return postSortDirection === "asc"
           ? titleA.localeCompare(titleB)
           : titleB.localeCompare(titleA);
       }
@@ -705,15 +815,18 @@ const ProfilePage: React.FC = () => {
       postPageNumbers.push(-1); // -1 represents an ellipsis
     }
   }
-  const uniquePostPageNumbers = postPageNumbers.filter((num, index, arr) => arr.indexOf(num) === index);
+  const uniquePostPageNumbers = postPageNumbers.filter(
+    (num, index, arr) => arr.indexOf(num) === index
+  );
 
+  // Update the getFilteredMedia function to sort by duration
   const getFilteredMedia = () => {
     // Filter out files with no path first
-    let filteredMedia = media.filter(file => !!file && !!file.path);
+    let filteredMedia = media.filter((file) => !!file && !!file.path);
 
     // Apply media type filter
-    if (mediaFilter === 'images') {
-      filteredMedia = filteredMedia.filter(file => {
+    if (mediaType === "images") {
+      filteredMedia = filteredMedia.filter((file) => {
         // Check file name first
         if (file.name && file.name.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
           return true;
@@ -721,8 +834,8 @@ const ProfilePage: React.FC = () => {
         // Then check path
         return file.path.match(/\.(jpg|jpeg|png|gif|webp)$/i);
       });
-    } else if (mediaFilter === 'videos') {
-      filteredMedia = filteredMedia.filter(file => {
+    } else if (mediaType === "videos") {
+      filteredMedia = filteredMedia.filter((file) => {
         // Check file name first
         if (file.name && file.name.match(/\.(mp4|webm|mov|avi|wmv)$/i)) {
           return true;
@@ -734,19 +847,19 @@ const ProfilePage: React.FC = () => {
 
     // Apply sorting
     filteredMedia.sort((a, b) => {
-      if (mediaSortBy === 'added') {
+      if (mediaSortBy === "added") {
         const aAdded = a.added || 0;
         const bAdded = b.added || 0;
-        return mediaSortDirection === 'asc' ? aAdded - bAdded : bAdded - aAdded;
-      } else if (mediaSortBy === 'size') {
-        const aSize = a.size || 0;
-        const bSize = b.size || 0;
-        return mediaSortDirection === 'asc' ? aSize - bSize : bSize - aSize;
-      } else { // duration
-        const aDuration = a.duration || 0;
-        const bDuration = b.duration || 0;
-        return mediaSortDirection === 'asc' ? aDuration - bDuration : bDuration - aDuration;
+        return mediaSortDirection === "asc" ? aAdded - bAdded : bAdded - aAdded;
+      } else if (mediaSortBy === "duration") {
+        // Get durations, treating images as 0 seconds
+        const aDuration = isVideo(a) ? getVideoDuration(a) || 0 : 0;
+        const bDuration = isVideo(b) ? getVideoDuration(b) || 0 : 0;
+        return mediaSortDirection === "asc"
+          ? aDuration - bDuration
+          : bDuration - aDuration;
       }
+      return 0;
     });
 
     return filteredMedia;
@@ -776,47 +889,30 @@ const ProfilePage: React.FC = () => {
       mediaPageNumbers.push(-1); // -1 represents an ellipsis
     }
   }
-  const uniqueMediaPageNumbers = mediaPageNumbers.filter((num, index, arr) => arr.indexOf(num) === index);
-
-  const isVideo = (file: MediaFile) => {
-    if (!file) return false;
-
-    // First check the name
-    if (file.name && file.name.match(/\.(mp4|webm|mov|avi|wmv)$/i)) {
-      return true;
-    }
-
-    // Fallback to checking the path
-    if (file.path && file.path.match(/\.(mp4|webm|mov|avi|wmv)$/i)) {
-      return true;
-    }
-
-    // If we have a type field, check that as well
-    if (file.type === 'video') {
-      return true;
-    }
-
-    return false;
-  };
+  const uniqueMediaPageNumbers = mediaPageNumbers.filter(
+    (num, index, arr) => arr.indexOf(num) === index
+  );
 
   const getMediaUrl = (file: MediaFile) => {
     if (!file || !file.path) {
-      console.error('Invalid file or missing path:', file);
-      return '';
+      console.error("Invalid file or missing path:", file);
+      return "";
     }
 
-    // For images, always use thumbnail type
-    if (!isVideo(file)) {
-      return apiService.getFileUrl(file.path, file.server, 'thumbnail');
+    // For videos, use the original file URL (not thumbnail)
+    if (isVideo(file)) {
+      // Use 'file' type for videos to get the original file
+      return apiService.getFileUrl(file.path, file.server, "file");
     }
-    // For videos, use the original type
-    return apiService.getFileUrl(file.path, file.server, file.type);
+
+    // For images, use thumbnail type
+    return apiService.getFileUrl(file.path, file.server, "thumbnail");
   };
 
   const getThumbnailUrl = (file: MediaFile) => {
     if (!file || !file.path) {
-      console.error('Invalid file or missing path:', file);
-      return '';
+      console.error("Invalid file or missing path:", file);
+      return "";
     }
     return apiService.getThumbnailUrl(file.path, file.server);
   };
@@ -837,8 +933,8 @@ const ProfilePage: React.FC = () => {
         ...post.file,
         id: `${post.id}-main`,
         added: timestamp,
-        // Use 'file' type for main file
-        type: 'file'
+        // Determine type based on file extension
+        type: isVideoPath(post.file.path) ? "file" : "thumbnail",
       });
       addedPaths.add(post.file.path);
     }
@@ -853,8 +949,8 @@ const ProfilePage: React.FC = () => {
           ...attachment,
           id: `${post.id}-attachment-${index}`,
           added: timestamp,
-          // Use 'attachment' type for attachments
-          type: 'attachment'
+          // Determine type based on file extension
+          type: isVideoPath(attachment.path) ? "file" : "attachment",
         });
         addedPaths.add(attachment.path);
       });
@@ -869,7 +965,9 @@ const ProfilePage: React.FC = () => {
         // Check if this attachment already exists in files
         if (addedPaths.has(attachment.path)) {
           // Update existing file with server info if needed
-          const existingIndex = files.findIndex(f => f.path === attachment.path);
+          const existingIndex = files.findIndex(
+            (f) => f.path === attachment.path
+          );
           if (existingIndex >= 0 && !files[existingIndex].server) {
             files[existingIndex].server = attachment.server;
           }
@@ -880,9 +978,9 @@ const ProfilePage: React.FC = () => {
             name: attachment.name,
             path: attachment.path,
             server: attachment.server,
-            // Use 'thumbnail' type for result attachments
-            type: 'thumbnail',
-            added: timestamp
+            // Determine type based on file extension
+            type: isVideoPath(attachment.path) ? "file" : "thumbnail",
+            added: timestamp,
           });
           addedPaths.add(attachment.path);
         }
@@ -898,7 +996,7 @@ const ProfilePage: React.FC = () => {
         // Check if this preview already exists in files
         if (addedPaths.has(preview.path)) {
           // Update existing file with server info if needed
-          const existingIndex = files.findIndex(f => f.path === preview.path);
+          const existingIndex = files.findIndex((f) => f.path === preview.path);
           if (existingIndex >= 0 && !files[existingIndex].server) {
             files[existingIndex].server = preview.server;
           }
@@ -909,9 +1007,9 @@ const ProfilePage: React.FC = () => {
             name: preview.name || `preview-${index}`,
             path: preview.path,
             server: preview.server,
-            // Use 'thumbnail' type for previews to ensure correct URL construction
-            type: 'thumbnail',
-            added: timestamp
+            // Determine type based on file extension
+            type: isVideoPath(preview.path) ? "file" : "thumbnail",
+            added: timestamp,
           });
           addedPaths.add(preview.path);
         }
@@ -919,7 +1017,7 @@ const ProfilePage: React.FC = () => {
     }
 
     // Return only files with valid paths
-    return files.filter(file => !!file.path);
+    return files.filter((file) => !!file.path);
   };
 
   // Navigate to full post view
@@ -934,96 +1032,44 @@ const ProfilePage: React.FC = () => {
     navigateToPost(post);
   };
 
-  // Load data when component mounts
-  useEffect(() => {
-    fetchCreatorData();
-    // Clean up navigation state when component unmounts
-    return () => {
-      endNavigation();
-    };
-  }, [service, id]);
-
   if (loading) {
     return (
-      <ProfileContainer>
-        <BreadcrumbNavigation />
-        <div style={{ padding: '2rem 0', textAlign: 'center' }}>
-          <p>Loading creator profile...</p>
+      <ContentContainer>
+        <div style={{ padding: "2rem 0", textAlign: "center" }}>
+          <p>Loading creator content...</p>
         </div>
-      </ProfileContainer>
+      </ContentContainer>
     );
   }
 
   // Create a safe creator object that always has the required properties
   const safeCreator = creator || {
-    id: id || '',
-    name: id || '',
-    service: service || '',
+    id: id || "",
+    name: id || "",
+    service: service || "",
     favorited: 0,
     updated: Math.floor(Date.now() / 1000),
-    links: []
+    links: [],
   };
 
   return (
     <ProfileContainer>
-      <BreadcrumbNavigation />
-
-      {/* Back button removed as breadcrumb provides similar functionality */}
-
-      <ProfileHeader>
-        <BannerImage imageUrl={apiService.getBannerUrl(service!, id!)} />
-        <ProfileInfo>
-          <ProfilePicture imageUrl={apiService.getProfilePictureUrl(service!, id!)} />
-          <ProfileDetails>
-            <CreatorName>{safeCreator.name || id}</CreatorName>
-            <StatsRow>
-              <Stat>
-                <span>Service:</span>
-                <strong>{service}</strong>
-              </Stat>
-              <Stat>
-                <span>❤️</span>
-                <strong>{safeCreator.favorited ? safeCreator.favorited.toLocaleString() : '0'}</strong>
-              </Stat>
-              <Stat>
-                <span>Last Updated:</span>
-                <strong>{safeCreator.updated ? formatTimestamp(safeCreator.updated) : 'Unknown'}</strong>
-              </Stat>
-            </StatsRow>
-
-            {safeCreator.links && safeCreator.links.length > 0 && (
-              <LinkedAccounts>
-                {safeCreator.links.map((link: { platform: string; url: string }, index: number) => (
-                  <SocialLink key={index} href={link.url} target="_blank" rel="noopener noreferrer">
-                    {link.platform === 'twitter' && '𝕏 Twitter'}
-                    {link.platform === 'instagram' && '📷 Instagram'}
-                    {link.platform === 'youtube' && '▶️ YouTube'}
-                    {link.platform === 'twitch' && '🎮 Twitch'}
-                    {!['twitter', 'instagram', 'youtube', 'twitch'].includes(link.platform) && `🔗 ${link.platform}`}
-                  </SocialLink>
-                ))}
-              </LinkedAccounts>
-            )}
-          </ProfileDetails>
-        </ProfileInfo>
-      </ProfileHeader>
-
       <TabsContainer>
         <Tab
-          active={activeTab === 'posts'}
-          onClick={() => setActiveTab('posts')}
+          active={activeTab === "posts"}
+          onClick={() => setActiveTab("posts")}
         >
           Posts
         </Tab>
         <Tab
-          active={activeTab === 'media'}
-          onClick={() => setActiveTab('media')}
+          active={activeTab === "media"}
+          onClick={() => setActiveTab("media")}
         >
           Media
         </Tab>
       </TabsContainer>
 
-      {activeTab === 'posts' && (
+      {activeTab === "posts" && (
         <>
           <FiltersContainer>
             <FilterGroup>
@@ -1037,8 +1083,14 @@ const ProfilePage: React.FC = () => {
 
               <SortDirectionSelect
                 value={postSortDirection}
-                onChange={(e) => setPostSortDirection(e.target.value as 'asc' | 'desc')}
-                title={postSortDirection === 'desc' ? 'Descending order' : 'Ascending order'}
+                onChange={(e) =>
+                  setPostSortDirection(e.target.value as "asc" | "desc")
+                }
+                title={
+                  postSortDirection === "desc"
+                    ? "Descending order"
+                    : "Ascending order"
+                }
               >
                 <option value="desc" aria-label="Descending order">
                   {String.fromCharCode(8595)} {/* Down arrow */}
@@ -1049,17 +1101,16 @@ const ProfilePage: React.FC = () => {
               </SortDirectionSelect>
             </FilterGroup>
 
-            <div>
-              {posts.length} posts
-            </div>
+            <div>{posts.length} posts</div>
           </FiltersContainer>
           <PostsContainer>
             {displayedPosts.length === 0 ? (
               <p>No posts found for this creator.</p>
             ) : (
-              displayedPosts.map(post => {
+              displayedPosts.map((post) => {
                 const postFiles = getPostMediaFiles(post);
-                const postUrl = `/${apiService.getCurrentApiInstance().url}/${service}/user/${id}/post/${post.id}`;
+                const postUrl = `/${apiService.getCurrentApiInstance().url
+                  }/${service}/user/${id}/post/${post.id}`;
                 const linkProps = handleLinkInteraction(
                   postUrl,
                   (e) => handlePostClick(e, post),
@@ -1072,23 +1123,43 @@ const ProfilePage: React.FC = () => {
                     href={postUrl}
                     {...linkProps}
                     data-spa-navigation="post"
+                    onClick={(e) => {
+                      // Only navigate if the click is directly on the card, not on media thumbnails
+                      if (
+                        e.target instanceof Element &&
+                        (e.target.closest(".media-thumbnail") ||
+                          e.target.closest(".media-thumbnail-wrapper"))
+                      ) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        return;
+                      }
+                      handlePostClick(e, post);
+                    }}
                   >
                     <PostHeader>
-                      <PostTitle>{post.title || `Post from ${formatDate(post.published)}`}</PostTitle>
+                      <PostTitle>
+                        {post.title ||
+                          `Post from ${formatDate(post.published)}`}
+                      </PostTitle>
                       <PostDate>{formatDate(post.published)}</PostDate>
                     </PostHeader>
 
                     {post.content && (
                       <>
                         <PostContent expanded={!!expandedPosts[post.id]}>
-                          <div dangerouslySetInnerHTML={{ __html: post.content }} />
+                          <div
+                            dangerouslySetInnerHTML={{ __html: post.content }}
+                          />
                         </PostContent>
                         {post.content.length > 300 && (
-                          <ExpandButton onClick={(e) => {
-                            e.stopPropagation(); // Prevent navigating to post view
-                            toggleExpandPost(post.id);
-                          }}>
-                            {expandedPosts[post.id] ? 'Show Less' : 'Show More'}
+                          <ExpandButton
+                            onClick={(e) => {
+                              e.stopPropagation(); // Prevent navigating to post view
+                              toggleExpandPost(post.id);
+                            }}
+                          >
+                            {expandedPosts[post.id] ? "Show Less" : "Show More"}
                           </ExpandButton>
                         )}
                       </>
@@ -1099,28 +1170,59 @@ const ProfilePage: React.FC = () => {
                         {postFiles.slice(0, 6).map((file) => (
                           <MediaThumbnail
                             key={file.id}
-                            imageUrl={getThumbnailUrl(file)}
+                            imageUrl={
+                              !isVideo(file) ? getThumbnailUrl(file) : undefined
+                            }
+                            isVideo={isVideo(file)}
                             onClick={(e) => {
+                              e.preventDefault(); // Prevent any default navigation
                               e.stopPropagation(); // Prevent navigating to post view
-                              handleMediaClick(file, media.findIndex(m => m.id === file.id));
+                              handleMediaClick(
+                                file,
+                                media.findIndex((m) => m.id === file.id),
+                                e
+                              );
                             }}
+                            className="media-thumbnail"
                           >
                             {isVideo(file) && (
-                              <VideoIndicator>
-                                {file.duration ? formatDuration(file.duration) : 'Video'}
-                              </VideoIndicator>
+                              <>
+                                <VideoThumbnail
+                                  src={getMediaUrl(file)}
+                                  preload="metadata"
+                                  muted
+                                  onLoadedMetadata={(e) =>
+                                    handleVideoMetadataLoaded(file, e)
+                                  }
+                                />
+                                <VideoIndicator>
+                                  {getVideoDuration(file)
+                                    ? formatDuration(getVideoDuration(file))
+                                    : "Loading..."}
+                                </VideoIndicator>
+                              </>
                             )}
                           </MediaThumbnail>
                         ))}
                         {postFiles.length > 6 && (
-                          <MediaThumbnail>
-                            <div style={{
-                              display: 'flex',
-                              justifyContent: 'center',
-                              alignItems: 'center',
-                              height: '100%',
-                              background: 'rgba(0,0,0,0.7)'
-                            }}>
+                          <MediaThumbnail
+                            className="media-thumbnail-wrapper"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              // Navigate to post to see all media
+                              navigateToPost(post);
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent: "center",
+                                alignItems: "center",
+                                height: "100%",
+                                background: "rgba(0,0,0,0.7)",
+                              }}
+                            >
                               +{postFiles.length - 6} more
                             </div>
                           </MediaThumbnail>
@@ -1136,15 +1238,20 @@ const ProfilePage: React.FC = () => {
           {totalPostPages > 1 && (
             <Pagination>
               <PageButton
-                onClick={() => setPostsPage(prev => Math.max(1, prev - 1))}
+                onClick={() => setPostsPage((prev) => Math.max(1, prev - 1))}
                 disabled={postsPage === 1}
               >
                 ←
               </PageButton>
 
-              {uniquePostPageNumbers.map((pageNum, index) => (
+              {uniquePostPageNumbers.map((pageNum, index) =>
                 pageNum === -1 ? (
-                  <span key={`ellipsis-post-${index}`} style={{ alignSelf: 'center' }}>...</span>
+                  <span
+                    key={`ellipsis-post-${index}`}
+                    style={{ alignSelf: "center" }}
+                  >
+                    ...
+                  </span>
                 ) : (
                   <PageButton
                     key={`post-page-${pageNum}`}
@@ -1154,10 +1261,12 @@ const ProfilePage: React.FC = () => {
                     {pageNum}
                   </PageButton>
                 )
-              ))}
+              )}
 
               <PageButton
-                onClick={() => setPostsPage(prev => Math.min(totalPostPages, prev + 1))}
+                onClick={() =>
+                  setPostsPage((prev) => Math.min(totalPostPages, prev + 1))
+                }
                 disabled={postsPage === totalPostPages}
               >
                 →
@@ -1167,13 +1276,15 @@ const ProfilePage: React.FC = () => {
         </>
       )}
 
-      {activeTab === 'media' && (
+      {activeTab === "media" && (
         <>
           <FiltersContainer>
             <FilterGroup>
               <Select
-                value={mediaFilter}
-                onChange={(e) => setMediaFilter(e.target.value as 'all' | 'images' | 'videos')}
+                value={mediaType}
+                onChange={(e) =>
+                  setMediaType(e.target.value as "all" | "images" | "videos")
+                }
               >
                 <option value="all">All Media</option>
                 <option value="images">Images Only</option>
@@ -1182,17 +1293,24 @@ const ProfilePage: React.FC = () => {
 
               <Select
                 value={mediaSortBy}
-                onChange={(e) => setMediaSortBy(e.target.value as MediaSortField)}
+                onChange={(e) =>
+                  setMediaSortBy(e.target.value as MediaSortField)
+                }
               >
                 <option value="added">Sort by Date</option>
-                <option value="size">Sort by Size</option>
                 <option value="duration">Sort by Duration</option>
               </Select>
 
               <SortDirectionSelect
                 value={mediaSortDirection}
-                onChange={(e) => setMediaSortDirection(e.target.value as 'asc' | 'desc')}
-                title={mediaSortDirection === 'desc' ? 'Descending order' : 'Ascending order'}
+                onChange={(e) =>
+                  setMediaSortDirection(e.target.value as "asc" | "desc")
+                }
+                title={
+                  mediaSortDirection === "desc"
+                    ? "Descending order"
+                    : "Ascending order"
+                }
               >
                 <option value="desc" aria-label="Descending order">
                   {String.fromCharCode(8595)} {/* Down arrow */}
@@ -1203,9 +1321,7 @@ const ProfilePage: React.FC = () => {
               </SortDirectionSelect>
             </FilterGroup>
 
-            <div>
-              {getFilteredMedia().length} items
-            </div>
+            <div>{getFilteredMedia().length} items</div>
           </FiltersContainer>
 
           <MediaGrid>
@@ -1215,20 +1331,55 @@ const ProfilePage: React.FC = () => {
               displayedMedia.map((file, index) => (
                 <MediaCard
                   key={file.id}
-                  onClick={() => handleMediaClick(file, getFilteredMedia().findIndex(m => m.id === file.id))}
+                  onClick={(e) => {
+                    e.preventDefault(); // Prevent any default navigation
+                    handleMediaClick(
+                      file,
+                      getFilteredMedia().findIndex((m) => m.id === file.id),
+                      e
+                    );
+                  }}
+                  className="media-thumbnail"
                 >
-                  <MediaPreview imageUrl={file.path ? getThumbnailUrl(file) : undefined}>
+                  <MediaPreview
+                    imageUrl={
+                      !isVideo(file) ? getThumbnailUrl(file) : undefined
+                    }
+                    isVideo={isVideo(file)}
+                  >
                     {isVideo(file) && (
-                      <VideoIndicator>
-                        {file.duration ? formatDuration(file.duration) : 'Video'}
-                      </VideoIndicator>
+                      <>
+                        <VideoPreview
+                          src={getMediaUrl(file)}
+                          preload="metadata"
+                          muted
+                          onLoadedMetadata={(e) =>
+                            handleVideoMetadataLoaded(file, e)
+                          }
+                        />
+                        <VideoIndicator>
+                          {getVideoDuration(file)
+                            ? formatDuration(getVideoDuration(file))
+                            : "Loading..."}
+                        </VideoIndicator>
+                      </>
                     )}
                   </MediaPreview>
                   <MediaInfo>
-                    <MediaTitle>{file.name || 'Untitled'}</MediaTitle>
+                    <MediaTitle>{file.name || "Untitled"}</MediaTitle>
                     <MediaMeta>
-                      <span>{file.added ? formatTimestamp(file.added) : 'Unknown date'}</span>
-                      <span>{((file.size || 0) / (1024 * 1024)).toFixed(1)} MB</span>
+                      <span>
+                        {file.added
+                          ? formatTimestamp(file.added)
+                          : "Unknown date"}
+                      </span>
+                      {isVideo(file) && (
+                        <span>
+                          {getVideoDuration(file)
+                            ? formatDuration(getVideoDuration(file))
+                            : "Loading..."}
+                        </span>
+                      )}
                     </MediaMeta>
                   </MediaInfo>
                 </MediaCard>
@@ -1239,15 +1390,20 @@ const ProfilePage: React.FC = () => {
           {totalMediaPages > 1 && (
             <Pagination>
               <PageButton
-                onClick={() => setMediaPage(prev => Math.max(1, prev - 1))}
+                onClick={() => setMediaPage((prev) => Math.max(1, prev - 1))}
                 disabled={mediaPage === 1}
               >
                 ←
               </PageButton>
 
-              {uniqueMediaPageNumbers.map((pageNum, index) => (
+              {uniqueMediaPageNumbers.map((pageNum, index) =>
                 pageNum === -1 ? (
-                  <span key={`ellipsis-media-${index}`} style={{ alignSelf: 'center' }}>...</span>
+                  <span
+                    key={`ellipsis-media-${index}`}
+                    style={{ alignSelf: "center" }}
+                  >
+                    ...
+                  </span>
                 ) : (
                   <PageButton
                     key={`media-page-${pageNum}`}
@@ -1257,10 +1413,12 @@ const ProfilePage: React.FC = () => {
                     {pageNum}
                   </PageButton>
                 )
-              ))}
+              )}
 
               <PageButton
-                onClick={() => setMediaPage(prev => Math.min(totalMediaPages, prev + 1))}
+                onClick={() =>
+                  setMediaPage((prev) => Math.min(totalMediaPages, prev + 1))
+                }
                 disabled={mediaPage === totalMediaPages}
               >
                 →
@@ -1271,67 +1429,96 @@ const ProfilePage: React.FC = () => {
       )}
 
       {selectedMedia && (
-        <MediaViewerOverlay onClick={closeMediaViewer}>
-          <CloseButton onClick={closeMediaViewer}>✕</CloseButton>
-          <MediaViewerContent onClick={e => e.stopPropagation()}>
-            {isVideo(selectedMedia) ? (
-              <VideoPlayer
-                id="media-viewer-video"
-                src={selectedMedia.path ? getMediaUrl(selectedMedia) : ''}
-                controls
-                autoPlay
-                onError={(e) => {
-                  console.error('Video playback error:', e);
-                  alert('Error playing video. The file may be unavailable or in an unsupported format.');
-                }}
-              />
-            ) : (
-              <ImageViewer
-                src={selectedMedia.path ? getMediaUrl(selectedMedia) : ''}
-                alt={selectedMedia.name || 'Image'}
-                onError={(e) => {
-                  console.error('Image loading error:', e);
-                  e.currentTarget.style.display = 'none';
-                  e.currentTarget.parentElement?.insertAdjacentHTML('beforeend', '<div style="padding: 20px; text-align: center;">Image failed to load</div>');
-                }}
-              />
-            )}
+        <MediaViewerOverlay
+          onClick={(e) => {
+            // Only close if clicking directly on the overlay (not its children)
+            if (e.target === e.currentTarget) {
+              closeMediaViewer();
+            }
+          }}
+        >
+          <CloseButton
+            onClick={(e) => {
+              e.stopPropagation();
+              closeMediaViewer();
+            }}
+          >
+            ✕
+          </CloseButton>
+          <MediaViewerContent onClick={(e) => e.stopPropagation()}>
+            <PrevButton
+              onClick={(e) => {
+                e.stopPropagation();
+                navigateMedia("prev");
+              }}
+              disabled={getFilteredMedia().length <= 1}
+            >
+              ←
+            </PrevButton>
 
-            <MediaViewerControls>
-              <MediaViewerButton
-                onClick={() => navigateMedia('prev')}
-                title="Previous"
-                disabled={getFilteredMedia().length <= 1}
-              >
-                ←
-              </MediaViewerButton>
-
-              {isVideo(selectedMedia) && (
-                <>
-                  <MediaViewerButton
-                    onClick={() => skipVideo(-10)}
-                    title="Back 10 seconds"
-                  >
-                    -10s
-                  </MediaViewerButton>
-
-                  <MediaViewerButton
-                    onClick={() => skipVideo(10)}
-                    title="Forward 10 seconds"
-                  >
-                    +10s
-                  </MediaViewerButton>
-                </>
+            <MediaContainer>
+              {isVideo(selectedMedia) ? (
+                <VideoPlayer
+                  id="media-viewer-video"
+                  src={selectedMedia.path ? getMediaUrl(selectedMedia) : ""}
+                  controls
+                  autoPlay
+                  onError={(e) => {
+                    console.error("Video playback error:", e);
+                    alert(
+                      "Error playing video. The file may be unavailable or in an unsupported format."
+                    );
+                  }}
+                />
+              ) : (
+                <ImageViewer
+                  src={selectedMedia.path ? getMediaUrl(selectedMedia) : ""}
+                  alt={selectedMedia.name || "Image"}
+                  onError={(e) => {
+                    console.error("Image loading error:", e);
+                    e.currentTarget.style.display = "none";
+                    e.currentTarget.parentElement?.insertAdjacentHTML(
+                      "beforeend",
+                      '<div style="padding: 20px; text-align: center;">Image failed to load</div>'
+                    );
+                  }}
+                />
               )}
+            </MediaContainer>
 
-              <MediaViewerButton
-                onClick={() => navigateMedia('next')}
-                title="Next"
-                disabled={getFilteredMedia().length <= 1}
-              >
-                →
-              </MediaViewerButton>
-            </MediaViewerControls>
+            <NextButton
+              onClick={(e) => {
+                e.stopPropagation();
+                navigateMedia("next");
+              }}
+              disabled={getFilteredMedia().length <= 1}
+            >
+              →
+            </NextButton>
+
+            {isVideo(selectedMedia) && (
+              <MediaViewerControls>
+                <MediaViewerButton
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    skipVideo(-10);
+                  }}
+                  title="Back 10 seconds"
+                >
+                  -10s
+                </MediaViewerButton>
+
+                <MediaViewerButton
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    skipVideo(10);
+                  }}
+                  title="Forward 10 seconds"
+                >
+                  +10s
+                </MediaViewerButton>
+              </MediaViewerControls>
+            )}
           </MediaViewerContent>
         </MediaViewerOverlay>
       )}

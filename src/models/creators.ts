@@ -1,4 +1,6 @@
-import type { Creator, CreatorProfile, Post } from '../types/api';
+import type { Creator } from '../types/creators';
+import type { CreatorProfile } from '../types/profile';
+import type { Post } from '../types/posts';
 
 /**
  * Class to manage creators data and state
@@ -22,6 +24,18 @@ export class CreatorsModel {
      */
     getCreators(): Creator[] {
         return this.creators;
+    }
+
+    /**
+     * Find a specific creator by service and id
+     * @param service The platform/service
+     * @param id Creator ID
+     * @returns Creator or undefined if not found
+     */
+    findCreator(service: string, id: string): Creator | undefined {
+        return this.creators.find(creator =>
+            creator.service === service && creator.id === id
+        );
     }
 
     /**

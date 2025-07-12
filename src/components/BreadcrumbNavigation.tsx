@@ -1,10 +1,10 @@
-import React from 'react';
-import styled from 'styled-components';
-import { useParams, useLocation } from 'react-router-dom';
-import { handleLinkInteraction } from '../utils/helpers';
-import { useNavigate } from 'react-router-dom';
-import { ApiService } from '../services/api';
-import { useNavigation } from '../context/NavigationContext';
+import React from "react";
+import styled from "styled-components";
+import { useParams, useLocation } from "react-router-dom";
+import { handleLinkInteraction } from "../utils/helpers";
+import { useNavigate } from "react-router-dom";
+import { ApiService } from "../services/api";
+import { useNavigation } from "../context/NavigationContext";
 
 const BreadcrumbContainer = styled.div`
   display: flex;
@@ -17,14 +17,14 @@ const BreadcrumbContainer = styled.div`
 `;
 
 const BreadcrumbItem = styled.a<{ isLast?: boolean }>`
-  color: ${({ theme, isLast }) => isLast ? theme.subtle : theme.text};
+  color: ${({ theme, isLast }) => (isLast ? theme.subtle : theme.text)};
   font-weight: bold;
   text-decoration: none;
   transition: color 0.2s ease;
-  cursor: ${({ isLast }) => isLast ? 'default' : 'pointer'};
+  cursor: ${({ isLast }) => (isLast ? "default" : "pointer")};
 
   &:hover {
-    color: ${({ theme, isLast }) => isLast ? theme.subtle : theme.foam};
+    color: ${({ theme, isLast }) => (isLast ? theme.subtle : theme.foam)};
     text-decoration: none;
   }
 `;
@@ -46,21 +46,22 @@ const BreadcrumbNavigation: React.FC = () => {
   const apiService = new ApiService();
   const { startNavigation } = useNavigation();
   const currentInstance = apiService.getCurrentApiInstance();
+  const availableInstances = apiService.getAvailableInstances();
 
   // Build breadcrumb items based on the current route
   const breadcrumbs = [];
 
   // Home - always present
-  const homeUrl = '/';
+  const homeUrl = "/";
   const handleHomeClick = (e: React.MouseEvent) => {
     e.preventDefault();
     startNavigation();
     navigate(homeUrl);
   };
   breadcrumbs.push({
-    name: 'Coomono',
+    name: "Coomono",
     url: homeUrl,
-    clickHandler: handleHomeClick
+    clickHandler: handleHomeClick,
   });
 
   // Instance
@@ -71,10 +72,15 @@ const BreadcrumbNavigation: React.FC = () => {
       startNavigation();
       navigate(instanceUrl);
     };
+
+    // Find the instance name from the available instances
+    const instanceObj = availableInstances.find((api) => api.url === instance);
+    const instanceName = instanceObj ? instanceObj.name : instance;
+
     breadcrumbs.push({
-      name: instance,
+      name: instanceName,
       url: instanceUrl,
-      clickHandler: handleInstanceClick
+      clickHandler: handleInstanceClick,
     });
 
     // Service
@@ -88,7 +94,7 @@ const BreadcrumbNavigation: React.FC = () => {
       breadcrumbs.push({
         name: service,
         url: serviceUrl,
-        clickHandler: handleServiceClick
+        clickHandler: handleServiceClick,
       });
 
       // Creator
@@ -107,7 +113,7 @@ const BreadcrumbNavigation: React.FC = () => {
         breadcrumbs.push({
           name: creatorName,
           url: creatorUrl,
-          clickHandler: handleCreatorClick
+          clickHandler: handleCreatorClick,
         });
 
         // Post
@@ -117,9 +123,9 @@ const BreadcrumbNavigation: React.FC = () => {
             e.preventDefault(); // Even for the current page, prevent default
           };
           breadcrumbs.push({
-            name: 'Post',
+            name: "Post",
             url: postUrl,
-            clickHandler: handlePostClick
+            clickHandler: handlePostClick,
           });
         }
       }
@@ -131,23 +137,22 @@ const BreadcrumbNavigation: React.FC = () => {
       {breadcrumbs.map((crumb, index) => {
         const isLast = index === breadcrumbs.length - 1;
         // Only apply click handlers if not the last item
-        const linkProps = !isLast ? handleLinkInteraction(crumb.url, crumb.clickHandler, startNavigation) : {};
+        const linkProps = !isLast
+          ? handleLinkInteraction(
+            crumb.url,
+            crumb.clickHandler,
+            startNavigation
+          )
+          : {};
 
         return (
           <React.Fragment key={index}>
             {isLast ? (
-              <BreadcrumbItem
-                as="span"
-                isLast={isLast}
-              >
+              <BreadcrumbItem as="span" isLast={isLast}>
                 {crumb.name}
               </BreadcrumbItem>
             ) : (
-              <BreadcrumbItem
-                href={crumb.url}
-                {...linkProps}
-                isLast={isLast}
-              >
+              <BreadcrumbItem href={crumb.url} {...linkProps} isLast={isLast}>
                 {crumb.name}
               </BreadcrumbItem>
             )}
