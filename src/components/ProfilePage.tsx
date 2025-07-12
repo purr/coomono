@@ -7,6 +7,7 @@ import type { Post as ApiPost } from '../types/posts';
 import type { Preview, Attachment } from '../types/posts';
 import type { LegacyPost } from '../types/posts-legacy';
 import type { File as MediaTypeFile } from '../types/common';
+import { handleLinkInteraction } from '../utils/helpers';
 
 // Define a MediaFile type to replace the File interface
 interface MediaFile extends MediaTypeFile {
@@ -21,7 +22,7 @@ const ProfileContainer = styled.div`
   padding: 0 16px 32px;
 `;
 
-const BackButton = styled.button`
+const BackButton = styled.a`
   background: ${({ theme }) => theme.overlay};
   color: ${({ theme }) => theme.text};
   border: none;
@@ -32,9 +33,16 @@ const BackButton = styled.button`
   align-items: center;
   gap: 8px;
   cursor: pointer;
+  text-decoration: none;
 
   &:hover {
     background: ${({ theme }) => theme.highlightMed};
+    text-decoration: none;
+  }
+
+  &:visited {
+    color: ${({ theme }) => theme.text};
+    text-decoration: none;
   }
 `;
 
@@ -228,15 +236,28 @@ const PostsContainer = styled.div`
   gap: 24px;
 `;
 
-const PostCard = styled.div`
+const PostCard = styled.a`
   background: ${({ theme }) => theme.surface};
   border-radius: 8px;
   overflow: hidden;
   cursor: pointer;
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  transition: transform 0.3s ease;
 
   &:hover {
     transform: translateY(-4px);
-    transition: transform 0.3s ease;
+    text-decoration: none;
+
+    h3 {
+      color: ${({ theme }) => theme.foam};
+    }
+  }
+
+  &:visited {
+    color: inherit;
+    text-decoration: none;
   }
 `;
 
@@ -250,6 +271,8 @@ const PostHeader = styled.div`
 const PostTitle = styled.h3`
   margin: 0;
   font-size: 1.2rem;
+  color: ${({ theme }) => theme.text};
+  transition: color 0.2s ease;
 `;
 
 const PostDate = styled.span`
@@ -334,10 +357,10 @@ const MediaCard = styled.div`
   border-radius: 8px;
   overflow: hidden;
   cursor: pointer;
+  transition: transform 0.3s ease;
 
   &:hover {
     transform: translateY(-4px);
-    transition: transform 0.3s ease;
   }
 `;
 
@@ -926,12 +949,20 @@ const ProfilePage: React.FC = () => {
 
   return (
     <ProfileContainer>
-      <BackButton onClick={() => {
-        const currentInstance = apiService.getCurrentApiInstance();
-        navigate(`/${currentInstance.url}`);
-      }}>
-        ← Back to Creators
-      </BackButton>
+      {/* Back button with right-click support */}
+      {(() => {
+        const homeUrl = `/${apiService.getCurrentApiInstance().url}`;
+        const handleBackClick = (e: React.MouseEvent) => {
+          navigate(homeUrl);
+        };
+        const backLinkProps = handleLinkInteraction(homeUrl, handleBackClick);
+
+        return (
+          <BackButton href={homeUrl} {...backLinkProps}>
+            ← Back to Creators
+          </BackButton>
+        );
+      })()}
 
       <ProfileHeader>
         <BannerImage imageUrl={apiService.getBannerUrl(service!, id!)} />
@@ -1022,8 +1053,15 @@ const ProfilePage: React.FC = () => {
             ) : (
               displayedPosts.map(post => {
                 const postFiles = getPostMediaFiles(post);
+                const postUrl = `/${apiService.getCurrentApiInstance().url}/${service}/user/${id}/post/${post.id}`;
+                const linkProps = handleLinkInteraction(postUrl, () => navigateToPost(post));
+
                 return (
-                  <PostCard key={post.id} onClick={() => navigateToPost(post)}>
+                  <PostCard
+                    key={post.id}
+                    href={postUrl}
+                    {...linkProps}
+                  >
                     <PostHeader>
                       <PostTitle>{post.title || `Post from ${formatDate(post.published)}`}</PostTitle>
                       <PostDate>{formatDate(post.published)}</PostDate>

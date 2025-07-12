@@ -1,14 +1,15 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import type { Creator } from '../types/creators';
 import { ApiService } from '../services/api';
+import { handleLinkInteraction } from '../utils/helpers';
 
 interface CreatorCardProps {
   creator: Creator;
 }
 
-const Card = styled(Link)`
+const Card = styled.a`
   position: relative;
   width: 100%;
   height: 80px;
@@ -20,6 +21,7 @@ const Card = styled(Link)`
   aspect-ratio: 4.5 / 1; /* Approximately 720:160 */
   display: block;
   text-decoration: none;
+  color: inherit; /* Inherit text color */
 
   &:hover {
     transform: translateY(-4px);
@@ -28,6 +30,11 @@ const Card = styled(Link)`
 
   &:focus {
     outline: none;
+    text-decoration: none;
+  }
+
+  &:visited {
+    color: inherit;
     text-decoration: none;
   }
 `;
@@ -132,13 +139,25 @@ const ServiceTag = styled.span`
 
 export const CreatorCard: React.FC<CreatorCardProps> = ({ creator }) => {
   const apiService = new ApiService();
+  const navigate = useNavigate();
   const bannerUrl = apiService.getBannerUrl(creator.service, creator.id);
   const profileUrl = apiService.getProfilePictureUrl(creator.service, creator.id);
   const currentInstance = apiService.getCurrentApiInstance();
   const formattedFavorites = creator.favorited.toLocaleString();
 
+  const linkUrl = `/${currentInstance.url}/${creator.service}/user/${creator.id}`;
+
+  const handleClick = (e: React.MouseEvent) => {
+    navigate(linkUrl);
+  };
+
+  const linkProps = handleLinkInteraction(linkUrl, handleClick);
+
   return (
-    <Card to={`/${currentInstance.url}/${creator.service}/user/${creator.id}`}>
+    <Card
+      href={linkUrl}
+      {...linkProps}
+    >
       <BannerContainer>
         <Banner imageUrl={bannerUrl} />
       </BannerContainer>

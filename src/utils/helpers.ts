@@ -76,3 +76,41 @@ export const debounce = <T extends (...args: any[]) => any>(
         timeout = setTimeout(later, wait);
     };
 };
+
+/**
+ * Handles link interaction with support for:
+ * - Middle click to open in new tab
+ * - Right click for context menu
+ * - Copy link address
+ *
+ * @param url The URL to navigate to or copy
+ * @param onClick Optional click handler
+ * @returns Event handler functions
+ */
+export const handleLinkInteraction = (url: string, onClick?: (e: React.MouseEvent) => void) => {
+    const handleClick = (e: React.MouseEvent) => {
+        // Allow middle click to work naturally (browser handles opening in new tab)
+        if (e.button === 1) return;
+
+        // For left click, call the onClick handler if provided
+        if (onClick) onClick(e);
+    };
+
+    const handleContextMenu = (e: React.MouseEvent) => {
+        // Right click - allow default browser context menu
+        // The browser's context menu will show options including "Open in new tab" and "Copy link address"
+        // We don't need to do anything special here, as the browser handles it
+    };
+
+    const handleAuxClick = (e: React.MouseEvent) => {
+        // This is for middle mouse button click
+        // We don't need to do anything special as the browser will handle opening in a new tab
+        // as long as we don't prevent the default behavior
+    };
+
+    return {
+        onClick: handleClick,
+        onContextMenu: handleContextMenu,
+        onAuxClick: handleAuxClick,
+    };
+};

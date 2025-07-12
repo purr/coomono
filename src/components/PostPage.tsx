@@ -4,6 +4,7 @@ import styled from 'styled-components';
 import { ApiService } from '../services/api';
 import type { Post, PostResponse, Attachment, Preview, Video, Props } from '../types/posts';
 import type { File as MediaTypeFile } from '../types/common';
+import { handleLinkInteraction } from '../utils/helpers';
 
 // Define a MediaFile type to replace the File interface
 interface MediaFile extends MediaTypeFile {
@@ -19,7 +20,7 @@ const PostPageContainer = styled.div`
   padding: 0 16px 32px;
 `;
 
-const BackButton = styled.button`
+const BackButton = styled.a`
   background: ${({ theme }) => theme.overlay};
   color: ${({ theme }) => theme.text};
   border: none;
@@ -30,9 +31,16 @@ const BackButton = styled.button`
   align-items: center;
   gap: 8px;
   cursor: pointer;
+  text-decoration: none;
 
   &:hover {
     background: ${({ theme }) => theme.highlightMed};
+    text-decoration: none;
+  }
+
+  &:visited {
+    color: ${({ theme }) => theme.text};
+    text-decoration: none;
   }
 `;
 
@@ -100,10 +108,10 @@ const MediaCard = styled.div`
   border-radius: 8px;
   overflow: hidden;
   cursor: pointer;
+  transition: transform 0.3s ease;
 
   &:hover {
     transform: translateY(-4px);
-    transition: transform 0.3s ease;
   }
 `;
 
@@ -481,12 +489,22 @@ const PostPage: React.FC = () => {
     );
   }
 
+  // Generate the creator profile URL for navigation
+  const creatorProfileUrl = `/${apiService.getCurrentApiInstance().url}/${service}/user/${id}`;
+
+  // Handle navigation with right-click support
+  const handleBackClick = (e: React.MouseEvent) => {
+    navigate(creatorProfileUrl);
+  };
+
+  const backLinkProps = handleLinkInteraction(creatorProfileUrl, handleBackClick);
+
   return (
     <PostPageContainer>
-      <BackButton onClick={() => {
-        const currentInstance = apiService.getCurrentApiInstance();
-        navigate(`/${currentInstance.url}/${service}/user/${id}`);
-      }}>
+      <BackButton
+        href={creatorProfileUrl}
+        {...backLinkProps}
+      >
         ← Back to Creator Profile
       </BackButton>
 
