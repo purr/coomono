@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import {
-  HashRouter as Router,
+  HashRouter,
   Routes,
   Route,
   Navigate,
@@ -301,20 +301,18 @@ const HomePage = () => {
 
 // Main App component with routing
 function App() {
-  // Get the base path for the app (useful for GitHub Pages deployment)
-  const basePath = import.meta.env.BASE_URL || "/";
-
+  // For GitHub Pages, we don't need to specify the basename with HashRouter
   return (
     <ThemeProvider>
       <GlobalStyles />
       <ThemeToggle />
-      <Router basename={basePath}>
+      <HashRouter>
         <NavigationProvider>
           <PasswordProtection>
             <AppContent />
           </PasswordProtection>
         </NavigationProvider>
-      </Router>
+      </HashRouter>
     </ThemeProvider>
   );
 }

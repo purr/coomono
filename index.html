@@ -1,13 +1,25 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="icon" type="image/svg+xml" href="./vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Vite + React + TS</title>
+    <!-- GitHub Pages SPA support -->
+    <script type="text/javascript">
+      // Single Page Apps for GitHub Pages
+      // Handle 404 redirects for SPA
+      (function () {
+        // Check if we need to redirect
+        if (window.location.hash && window.location.hash.length > 1) {
+          const path = window.location.hash.substring(1);
+          console.log("SPA router handling path:", path);
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <script type="module" src="./src/main.tsx"></script>
   </body>
 </html>

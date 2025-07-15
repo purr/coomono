@@ -30,8 +30,10 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Build
-        run: GITHUB_PAGES=true yarn build
+      - name: Build for GitHub Pages
+        run: yarn build:gh-pages
+        env:
+          GITHUB_PAGES: "true"
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
