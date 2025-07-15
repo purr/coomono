@@ -9,6 +9,7 @@ export class CreatorsModel {
     private creators: Creator[] = [];
     private creatorProfiles: Map<string, CreatorProfile> = new Map();
     private creatorPosts: Map<string, Post[]> = new Map();
+    private currentDomain: string = ''; // Store the current API domain
 
     /**
      * Sets the list of all creators
@@ -24,6 +25,22 @@ export class CreatorsModel {
      */
     getCreators(): Creator[] {
         return this.creators;
+    }
+
+    /**
+     * Sets the current API domain
+     * @param domain Current API domain
+     */
+    setCurrentDomain(domain: string): void {
+        this.currentDomain = domain;
+    }
+
+    /**
+     * Gets the current API domain
+     * @returns Current API domain
+     */
+    getCurrentDomain(): string {
+        return this.currentDomain;
     }
 
     /**

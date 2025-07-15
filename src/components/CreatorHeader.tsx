@@ -1,4 +1,4 @@
-import React, { memo } from 'react';
+import React, { memo, useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { ApiService } from '../services/api';
 import { useCreator } from '../context/CreatorContext';
@@ -12,17 +12,9 @@ const ProfileHeaderContainer = styled.div`
   margin-bottom: 24px;
 `;
 
-const BannerImage = styled.div<{ imageUrl?: string }>`
-  width: 100%;
-  height: 240px;
-  background-image: url(${props => props.imageUrl || 'none'});
-  background-size: cover;
-  background-position: center;
+const BannerContainer = styled.div`
   position: relative;
-
-  /* Ensure image is always displayed at full size */
-  background-repeat: no-repeat;
-  min-height: 240px;
+  width: 100%;
 
   &::after {
     content: '';
@@ -32,7 +24,16 @@ const BannerImage = styled.div<{ imageUrl?: string }>`
     width: 100%;
     height: 50%;
     background: linear-gradient(to top, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0));
+    /* Ensure the gradient is above the image but below any text */
+    z-index: 1;
   }
+`;
+
+const BannerImage = styled.img`
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: cover;
 `;
 
 const ProfileInfo = styled.div`
@@ -54,10 +55,11 @@ const ProfilePicture = styled.div<{ imageUrl?: string }>`
   height: 160px;
   border-radius: 50%;
   border: 4px solid ${({ theme }) => theme.rose};
-  background-image: url(${props => props.imageUrl || 'none'});
+  background-image: ${props => props.imageUrl ? `url(${props.imageUrl})` : 'none'};
   background-size: cover;
   background-position: center;
   margin-bottom: 16px;
+  /* Ensure profile picture is above the banner gradient */
   z-index: 2;
 `;
 
@@ -114,6 +116,25 @@ const arePropsEqual = (prevProps: {}, nextProps: {}) => {
 const CreatorHeader: React.FC = () => {
   const { creator, service, id, favoriteCount } = useCreator();
   const apiService = new ApiService();
+  const [bannerUrl, setBannerUrl] = useState<string>('');
+  const [profileUrl, setProfileUrl] = useState<string>('');
+
+  // Only load image URLs once when the component mounts or when service/id change
+  useEffect(() => {
+    if (service && id) {
+      // Use a flag to prevent setting state if component unmounts before API call completes
+      let isMounted = true;
+
+      if (isMounted) {
+        setBannerUrl(apiService.getBannerUrl(service, id));
+        setProfileUrl(apiService.getProfilePictureUrl(service, id));
+      }
+
+      return () => {
+        isMounted = false; // Clean up to prevent memory leaks
+      };
+    }
+  }, [service, id]);
 
   // Format timestamp
   const formatTimestamp = (timestamp: number): string => {
@@ -132,9 +153,11 @@ const CreatorHeader: React.FC = () => {
 
   return (
     <ProfileHeaderContainer>
-      <BannerImage imageUrl={apiService.getBannerUrl(service!, id!)} />
+      <BannerContainer>
+        {bannerUrl && <BannerImage src={bannerUrl} alt="Creator banner" />}
+      </BannerContainer>
       <ProfileInfo>
-        <ProfilePicture imageUrl={apiService.getProfilePictureUrl(service!, id!)} />
+        <ProfilePicture imageUrl={profileUrl} />
         <ProfileDetails>
           <CreatorName>{safeCreator.name || id}</CreatorName>
           <StatsRow>

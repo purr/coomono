@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import styled from "styled-components";
 import { CreatorCard } from "./CreatorCard";
 import { SearchBar } from "./SearchBar";
-import type { Creator } from "../types/creator";
+import type { Creator } from "../types/creators";
 
 interface CreatorListProps {
   creators: Creator[];
@@ -13,8 +13,11 @@ type SortField = "favorited" | "updated" | "name";
 
 const Container = styled.div`
   max-width: 1200px;
+  width: 100%;
   margin: 0 auto;
   padding: 0 16px;
+  overflow-x: hidden;
+  box-sizing: border-box;
 `;
 
 const Header = styled.div`
@@ -42,7 +45,17 @@ const FiltersContainer = styled.div`
   }
 `;
 
+const FilterGroup = styled.div`
+  display: flex;
+  gap: 12px;
+`;
+
 const Select = styled.select`
+  padding: 8px 12px;
+  border-radius: 4px;
+  background: ${({ theme }) => theme.overlay};
+  color: ${({ theme }) => theme.text};
+  border: 1px solid ${({ theme }) => theme.highlightMed};
   min-width: 120px;
 `;
 
@@ -56,15 +69,19 @@ const SortDirectionSelect = styled(Select)`
 
 const Grid = styled.div`
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 24px;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
 
   @media (max-width: 768px) {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 20px;
   }
 
   @media (max-width: 480px) {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: 1fr;
     gap: 16px;
   }
 `;
@@ -200,7 +217,7 @@ export const CreatorList: React.FC<CreatorListProps> = ({
 
       <Header>
         <h2>Creators ({filteredCreators.length})</h2>
-        <FiltersContainer>
+        <FilterGroup>
           <Select
             value={selectedService}
             onChange={(e) => setSelectedService(e.target.value)}
@@ -236,7 +253,7 @@ export const CreatorList: React.FC<CreatorListProps> = ({
               {String.fromCharCode(8593)} {/* Up arrow */}
             </option>
           </SortDirectionSelect>
-        </FiltersContainer>
+        </FilterGroup>
       </Header>
 
       {isLoading ? (

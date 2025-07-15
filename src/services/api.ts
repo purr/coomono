@@ -165,7 +165,7 @@ export class ApiService {
     /**
      * Gets the domain for the current API instance
      */
-    private getDomain(): string {
+    getDomain(): string {
         return this.currentApiInstance.url;
     }
 

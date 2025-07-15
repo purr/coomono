@@ -112,16 +112,21 @@ const creatorsModel = new CreatorsModel();
 
 // Global function to ensure creators are loaded - can be called from any component
 export const ensureCreatorsLoaded = async (): Promise<boolean> => {
-  if (creatorsModel.getCreators().length > 0) {
+  if (creatorsModel.getCreators().length > 0 && creatorsModel.getCurrentDomain() === apiService.getDomain()) {
     console.log("Using existing creators data from model");
     return true;
   }
 
   try {
     console.log("Fetching creators.txt to populate model");
+    // Clear existing creators when loading for a new domain
+    creatorsModel.setCreators([]);
+
     const response = await apiService.getAllCreators();
     if (response.data) {
       creatorsModel.setCreators(response.data);
+      // Store the current domain for future reference
+      creatorsModel.setCurrentDomain(apiService.getDomain());
       return true;
     }
     return false;
@@ -195,6 +200,10 @@ const HomePage = () => {
 
     if (selectedApi) {
       console.log("Changing API to:", selectedApi);
+
+      // Clear creators in the model before changing API instance
+      creatorsModel.setCreators([]);
+
       apiService.setCurrentApiInstance(selectedApi);
       setCurrentApi(selectedApi);
 
@@ -224,6 +233,9 @@ const HomePage = () => {
         setApiInstances(apiService.getAvailableInstances());
 
         if (confirm(`Set ${apiInstance.name} as current API?`)) {
+          // Clear creators in the model before changing API instance
+          creatorsModel.setCreators([]);
+
           apiService.setCurrentApiInstance(apiInstance);
           setCurrentApi(apiInstance);
 
