@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import {
-  BrowserRouter,
+  HashRouter as Router,
   Routes,
   Route,
   Navigate,
@@ -209,7 +209,7 @@ const HomePage = () => {
       setCurrentApi(selectedApi);
 
       // Navigate to the instance-specific URL
-      navigate(`/${selectedApi.url}`);
+      navigate(`${selectedApi.url}`);
 
       // The fetchCreators will be called from the effect above
       // when instance changes, so we don't need to call it here
@@ -241,7 +241,7 @@ const HomePage = () => {
           setCurrentApi(apiInstance);
 
           // Navigate to the instance-specific URL
-          navigate(`/${apiInstance.url}`);
+          navigate(`${apiInstance.url}`);
 
           // The fetchCreators will be called from the effect above
           // when instance changes, so we don't need to call it here
@@ -308,13 +308,13 @@ function App() {
     <ThemeProvider>
       <GlobalStyles />
       <ThemeToggle />
-      <BrowserRouter basename={basePath}>
+      <Router basename={basePath}>
         <NavigationProvider>
           <PasswordProtection>
             <AppContent />
           </PasswordProtection>
         </NavigationProvider>
-      </BrowserRouter>
+      </Router>
     </ThemeProvider>
   );
 }
@@ -327,9 +327,9 @@ const AppContent = () => {
     <>
       <LoadingBar isLoading={isNavigating} />
       <Routes>
-        <Route path="/" element={<Navigate to="/coomer.su" replace />} />
-        <Route path="/:instance/*" element={<InstanceRouter />} />
-        <Route path="*" element={<Navigate to="/coomer.su" replace />} />
+        <Route path="/" element={<Navigate to="coomer.su" replace />} />
+        <Route path=":instance/*" element={<InstanceRouter />} />
+        <Route path="*" element={<Navigate to="coomer.su" replace />} />
       </Routes>
     </>
   );
@@ -354,7 +354,7 @@ const InstanceRouter = () => {
       if (!instance) {
         if (defaultInstance) {
           apiService.setCurrentApiInstance(defaultInstance);
-          navigate(`/${defaultInstance.url}`, { replace: true });
+          navigate(`${defaultInstance.url}`, { replace: true });
         }
         return;
       }
@@ -413,7 +413,8 @@ const InstanceRouter = () => {
             if (defaultInstance) {
               apiService.setCurrentApiInstance(defaultInstance);
               // Update URL without triggering a new navigation
-              window.history.replaceState(null, "", `/${defaultInstance.url}`);
+              const basePath = import.meta.env.BASE_URL || "/";
+              window.history.replaceState(null, "", `${basePath}${defaultInstance.url}`);
 
               // Ensure creators are loaded for the default instance
               await ensureCreatorsLoaded();
@@ -429,7 +430,8 @@ const InstanceRouter = () => {
           if (defaultInstance) {
             apiService.setCurrentApiInstance(defaultInstance);
             // Update URL without triggering a new navigation
-            window.history.replaceState(null, "", `/${defaultInstance.url}`);
+            const basePath = import.meta.env.BASE_URL || "/";
+            window.history.replaceState(null, "", `${basePath}${defaultInstance.url}`);
 
             // Ensure creators are loaded for the default instance
             await ensureCreatorsLoaded();

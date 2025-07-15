@@ -4,6 +4,10 @@ import type { Plugin } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'http';
 import * as https from 'https';
 
+// GitHub Pages deployment - use repo name as base path in production
+const isGitHubPages = process.env.GITHUB_PAGES === 'true';
+const repoName = 'coomono'; // Replace with your actual repository name if different
+
 // Custom plugin for dynamic API proxying without hardcoded domains
 function createDynamicProxyPlugin(): Plugin {
   return {
@@ -73,10 +77,23 @@ export default defineConfig({
     react(),
     createDynamicProxyPlugin()
   ],
-  base: process.env.GITHUB_PAGES === 'true' ? '/coomono/' : '/', // Base path for the application
+  base: isGitHubPages ? `/${repoName}/` : '/', // Base path for the application
   server: {
     port: 3000,
     host: true, // Listen on all addresses, including LAN and public addresses
     open: true // Automatically open the browser
+  },
+  build: {
+    // Handle routing for SPA in GitHub Pages
+    assetsDir: 'assets',
+    outDir: 'dist',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ['react', 'react-dom'],
+          router: ['react-router-dom']
+        }
+      }
+    }
   }
 });
