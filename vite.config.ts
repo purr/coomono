@@ -73,7 +73,7 @@ export default defineConfig({
     react(),
     createDynamicProxyPlugin()
   ],
-  base: '/', // Base path for the application
+  base: process.env.GITHUB_PAGES === 'true' ? '/coomono/' : '/', // Base path for the application
   server: {
     port: 3000,
     host: true, // Listen on all addresses, including LAN and public addresses

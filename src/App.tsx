@@ -20,6 +20,7 @@ import PostPage from "./components/PostPage";
 import BreadcrumbNavigation from "./components/BreadcrumbNavigation";
 import CreatorHeader from "./components/CreatorHeader";
 import LoadingBar from "./components/LoadingBar";
+import PasswordProtection from "./components/PasswordProtection";
 import { NavigationProvider, useNavigation } from "./context/NavigationContext";
 import { CreatorProvider } from "./context/CreatorContext";
 import type { Creator } from "./types/creators";
@@ -309,7 +310,9 @@ function App() {
       <ThemeToggle />
       <BrowserRouter basename={basePath}>
         <NavigationProvider>
-          <AppContent />
+          <PasswordProtection>
+            <AppContent />
+          </PasswordProtection>
         </NavigationProvider>
       </BrowserRouter>
     </ThemeProvider>
