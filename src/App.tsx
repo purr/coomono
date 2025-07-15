@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import {
-  HashRouter,
+  BrowserRouter,
   Routes,
   Route,
   Navigate,
@@ -20,7 +20,6 @@ import PostPage from "./components/PostPage";
 import BreadcrumbNavigation from "./components/BreadcrumbNavigation";
 import CreatorHeader from "./components/CreatorHeader";
 import LoadingBar from "./components/LoadingBar";
-import PasswordProtection from "./components/PasswordProtection";
 import { NavigationProvider, useNavigation } from "./context/NavigationContext";
 import { CreatorProvider } from "./context/CreatorContext";
 import type { Creator } from "./types/creators";
@@ -209,7 +208,7 @@ const HomePage = () => {
       setCurrentApi(selectedApi);
 
       // Navigate to the instance-specific URL
-      navigate(`${selectedApi.url}`);
+      navigate(`/${selectedApi.url}`);
 
       // The fetchCreators will be called from the effect above
       // when instance changes, so we don't need to call it here
@@ -241,7 +240,7 @@ const HomePage = () => {
           setCurrentApi(apiInstance);
 
           // Navigate to the instance-specific URL
-          navigate(`${apiInstance.url}`);
+          navigate(`/${apiInstance.url}`);
 
           // The fetchCreators will be called from the effect above
           // when instance changes, so we don't need to call it here
@@ -301,18 +300,18 @@ const HomePage = () => {
 
 // Main App component with routing
 function App() {
-  // For GitHub Pages, we don't need to specify the basename with HashRouter
+  // Get the base path for the app (useful for GitHub Pages deployment)
+  const basePath = import.meta.env.BASE_URL || "/";
+
   return (
     <ThemeProvider>
       <GlobalStyles />
       <ThemeToggle />
-      <HashRouter>
+      <BrowserRouter basename={basePath}>
         <NavigationProvider>
-          <PasswordProtection>
-            <AppContent />
-          </PasswordProtection>
+          <AppContent />
         </NavigationProvider>
-      </HashRouter>
+      </BrowserRouter>
     </ThemeProvider>
   );
 }
@@ -325,9 +324,9 @@ const AppContent = () => {
     <>
       <LoadingBar isLoading={isNavigating} />
       <Routes>
-        <Route path="/" element={<Navigate to="coomer.su" replace />} />
-        <Route path=":instance/*" element={<InstanceRouter />} />
-        <Route path="*" element={<Navigate to="coomer.su" replace />} />
+        <Route path="/" element={<Navigate to="/coomer.su" replace />} />
+        <Route path="/:instance/*" element={<InstanceRouter />} />
+        <Route path="*" element={<Navigate to="/coomer.su" replace />} />
       </Routes>
     </>
   );
@@ -352,7 +351,7 @@ const InstanceRouter = () => {
       if (!instance) {
         if (defaultInstance) {
           apiService.setCurrentApiInstance(defaultInstance);
-          navigate(`${defaultInstance.url}`, { replace: true });
+          navigate(`/${defaultInstance.url}`, { replace: true });
         }
         return;
       }
@@ -411,8 +410,7 @@ const InstanceRouter = () => {
             if (defaultInstance) {
               apiService.setCurrentApiInstance(defaultInstance);
               // Update URL without triggering a new navigation
-              const basePath = import.meta.env.BASE_URL || "/";
-              window.history.replaceState(null, "", `${basePath}${defaultInstance.url}`);
+              window.history.replaceState(null, "", `/${defaultInstance.url}`);
 
               // Ensure creators are loaded for the default instance
               await ensureCreatorsLoaded();
@@ -428,8 +426,7 @@ const InstanceRouter = () => {
           if (defaultInstance) {
             apiService.setCurrentApiInstance(defaultInstance);
             // Update URL without triggering a new navigation
-            const basePath = import.meta.env.BASE_URL || "/";
-            window.history.replaceState(null, "", `${basePath}${defaultInstance.url}`);
+            window.history.replaceState(null, "", `/${defaultInstance.url}`);
 
             // Ensure creators are loaded for the default instance
             await ensureCreatorsLoaded();

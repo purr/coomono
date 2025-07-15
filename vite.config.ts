@@ -4,13 +4,8 @@ import type { Plugin } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'http';
 import * as https from 'https';
 
-// GitHub Pages deployment - use repo name as base path in production
-const isGitHubPages = process.env.GITHUB_PAGES === 'true';
-const repoName = 'coomono';
-
 // Custom plugin for dynamic API proxying without hardcoded domains
 function createDynamicProxyPlugin(): Plugin {
-  // Plugin code remains the same
   return {
     name: 'vite-plugin-dynamic-proxy',
     configureServer(server) {
@@ -78,14 +73,10 @@ export default defineConfig({
     react(),
     createDynamicProxyPlugin()
   ],
-  base: isGitHubPages ? `/${repoName}/` : '/',
-  build: {
-    outDir: 'dist',
-    emptyOutDir: true,
-    sourcemap: false
-  },
+  base: '/', // Base path for the application
   server: {
     port: 3000,
-    host: true
+    host: true, // Listen on all addresses, including LAN and public addresses
+    open: true // Automatically open the browser
   }
 });
